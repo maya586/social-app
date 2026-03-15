@@ -3,8 +3,13 @@ package main
 import (
 	"log"
 	"github.com/gin-gonic/gin"
+	"github.com/example/social-app/server/internal/cache"
 	"github.com/example/social-app/server/internal/config"
 	"github.com/example/social-app/server/internal/database"
+	"github.com/example/social-app/server/internal/handler"
+	"github.com/example/social-app/server/internal/repository"
+	"github.com/example/social-app/server/internal/router"
+	"github.com/example/social-app/server/internal/service"
 )
 
 func main() {
@@ -17,12 +22,17 @@ func main() {
 	if err := database.Migrate(); err != nil {
 		log.Fatal("Failed to migrate database:", err)
 	}
+
+	if err := cache.Connect(&cfg.Redis); err != nil {
+		log.Fatal("Failed to connect to redis:", err)
+	}
+
+	userRepo := repository.NewUserRepo()
+	authService := service.NewAuthService(userRepo, cfg.JWT.Secret, int(cfg.JWT.ExpireTime.Seconds()))
+	authHandler := handler.NewAuthHandler(authService)
 	
 	r := gin.Default()
-	
-	r.GET("/health", func(c *gin.Context) {
-		c.JSON(200, gin.H{"status": "ok"})
-	})
+	router.Setup(r, authService, authHandler)
 	
 	log.Printf("Server starting on port %s", cfg.Server.Port)
 	if err := r.Run(":" + cfg.Server.Port); err != nil {
