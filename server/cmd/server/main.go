@@ -4,10 +4,19 @@ import (
 	"log"
 	"github.com/gin-gonic/gin"
 	"github.com/example/social-app/server/internal/config"
+	"github.com/example/social-app/server/internal/database"
 )
 
 func main() {
 	cfg := config.Load()
+	
+	if err := database.Connect(&cfg.Database); err != nil {
+		log.Fatal("Failed to connect to database:", err)
+	}
+	
+	if err := database.Migrate(); err != nil {
+		log.Fatal("Failed to migrate database:", err)
+	}
 	
 	r := gin.Default()
 	
