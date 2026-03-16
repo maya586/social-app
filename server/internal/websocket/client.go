@@ -83,5 +83,9 @@ func (c *Client) handleMessage(msg *WSMessage) {
 	switch msg.Event {
 	case "ping":
 		c.send <- []byte(`{"event":"pong"}`)
+	case "sync":
+		// Client requests message sync after reconnection
+		// The actual sync is handled by the handler layer
+		c.send <- []byte(`{"event":"sync:ack"}`)
 	}
 }

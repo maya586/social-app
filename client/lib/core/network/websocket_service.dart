@@ -1,9 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:web_socket_channel/web_socket_channel.dart';
-import 'package:uuid/uuid.dart';
 import '../network/api_config.dart';
 import '../storage/token_storage.dart';
+import 'api_client.dart';
 
 class WebSocketService {
   static final WebSocketService _instance = WebSocketService._internal();
@@ -14,7 +14,9 @@ class WebSocketService {
   WebSocketChannel? _channel;
   final _messageController = StreamController<Map<String, dynamic>>.broadcast();
   Timer? _heartbeatTimer;
+  Timer? _syncTimer;
   bool _isConnected = false;
+  String? _lastSyncTimestamp;
   
   Stream<Map<String, dynamic>> get messages => _messageController.stream;
   bool get isConnected => _isConnected;
@@ -34,7 +36,7 @@ class WebSocketService {
       (data) {
         try {
           final message = json.decode(data) as Map<String, dynamic>;
-          _messageController.add(message);
+          _handleMessage(message);
         } catch (e) {
           // Ignore parse errors
         }
@@ -51,6 +53,49 @@ class WebSocketService {
     
     _isConnected = true;
     _startHeartbeat();
+    _requestSync();
+  }
+  
+  void _handleMessage(Map<String, dynamic> message) {
+    final event = message['event'] as String?;
+    
+    switch (event) {
+      case 'message:new':
+        _messageController.add(message);
+        break;
+      case 'message:read':
+        _messageController.add(message);
+        break;
+      case 'sync:ack':
+        // Sync acknowledged
+        break;
+      default:
+        _messageController.add(message);
+    }
+  }
+  
+  Future<void> _requestSync() async {
+    try {
+      // Fetch conversations with recent messages
+      final response = await ApiClient().dio.get('/conversations?limit=20');
+      final conversations = response.data as List?;
+      
+      if (conversations != null) {
+        for (final conv in conversations) {
+          final convId = conv['id'];
+          // Fetch recent messages for each conversation
+          await ApiClient().dio.get('/messages/conversation/$convId?limit=10');
+        }
+      }
+      
+      send({'event': 'sync', 'last_sync': _lastSyncTimestamp});
+    } catch (e) {
+      // Ignore sync errors
+    }
+  }
+  
+  void setLastSyncTimestamp(String timestamp) {
+    _lastSyncTimestamp = timestamp;
   }
   
   void _startHeartbeat() {
@@ -76,6 +121,7 @@ class WebSocketService {
   
   void disconnect() {
     _heartbeatTimer?.cancel();
+    _syncTimer?.cancel();
     _channel?.sink.close();
     _isConnected = false;
   }
