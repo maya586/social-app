@@ -1,6 +1,7 @@
 package router
 
 import (
+	"time"
 	"github.com/gin-gonic/gin"
 	"github.com/example/social-app/server/internal/handler"
 	"github.com/example/social-app/server/internal/middleware"
@@ -16,6 +17,7 @@ func Setup(r *gin.Engine, authService *service.AuthService, authHandler *handler
 	api := r.Group("/api/v1")
 	{
 		auth := api.Group("/auth")
+		auth.Use(middleware.RateLimit(10, time.Minute))
 		{
 			auth.POST("/register", authHandler.Register)
 			auth.POST("/login", authHandler.Login)
@@ -25,6 +27,7 @@ func Setup(r *gin.Engine, authService *service.AuthService, authHandler *handler
 
 		protected := api.Group("")
 		protected.Use(middleware.AuthMiddleware(authService))
+		protected.Use(middleware.UserRateLimit(300, time.Minute))
 		{
 			contacts := protected.Group("/contacts")
 			{
@@ -35,6 +38,7 @@ func Setup(r *gin.Engine, authService *service.AuthService, authHandler *handler
 			}
 
 			messages := protected.Group("/messages")
+			messages.Use(middleware.UserRateLimit(100, time.Minute))
 			{
 				messages.GET("/conversation/:id", messageHandler.List)
 				messages.POST("", messageHandler.Send)
@@ -43,6 +47,7 @@ func Setup(r *gin.Engine, authService *service.AuthService, authHandler *handler
 			}
 
 			files := protected.Group("/files")
+			files.Use(middleware.UserRateLimit(20, time.Hour))
 			{
 				files.POST("/upload", fileHandler.Upload)
 				files.GET("/:id", fileHandler.Download)
