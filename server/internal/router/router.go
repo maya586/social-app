@@ -7,7 +7,10 @@ import (
 	"github.com/example/social-app/server/internal/service"
 )
 
-func Setup(r *gin.Engine, authService *service.AuthService, authHandler *handler.AuthHandler) {
+func Setup(r *gin.Engine, authService *service.AuthService, authHandler *handler.AuthHandler,
+	contactHandler *handler.ContactHandler, messageHandler *handler.MessageHandler,
+	wsHandler *handler.WSHandler) {
+	
 	r.Use(middleware.CORS())
 
 	api := r.Group("/api/v1")
@@ -19,8 +22,28 @@ func Setup(r *gin.Engine, authService *service.AuthService, authHandler *handler
 			auth.POST("/logout", middleware.AuthMiddleware(authService), authHandler.Logout)
 			auth.POST("/refresh-token", authHandler.RefreshToken)
 		}
+
+		protected := api.Group("")
+		protected.Use(middleware.AuthMiddleware(authService))
+		{
+			contacts := protected.Group("/contacts")
+			{
+				contacts.GET("", contactHandler.GetContacts)
+				contacts.POST("/request", contactHandler.AddContact)
+				contacts.POST("/accept/:id", contactHandler.AcceptContact)
+				contacts.DELETE("/:id", contactHandler.DeleteContact)
+			}
+
+			messages := protected.Group("/messages")
+			{
+				messages.GET("/conversation/:id", messageHandler.List)
+				messages.POST("", messageHandler.Send)
+				messages.DELETE("/:id", messageHandler.Recall)
+			}
+		}
 	}
 
+	r.GET("/ws", wsHandler.HandleWebSocket)
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{"status": "ok"})
 	})

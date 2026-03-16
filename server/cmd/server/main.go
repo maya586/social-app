@@ -10,6 +10,7 @@ import (
 	"github.com/example/social-app/server/internal/repository"
 	"github.com/example/social-app/server/internal/router"
 	"github.com/example/social-app/server/internal/service"
+	"github.com/example/social-app/server/internal/websocket"
 )
 
 func main() {
@@ -28,11 +29,24 @@ func main() {
 	}
 
 	userRepo := repository.NewUserRepo()
+	contactRepo := repository.NewContactRepo()
+	conversationRepo := repository.NewConversationRepo()
+	messageRepo := repository.NewMessageRepo()
+
 	authService := service.NewAuthService(userRepo, cfg.JWT.Secret, int(cfg.JWT.ExpireTime.Seconds()))
+	contactService := service.NewContactService(contactRepo, userRepo)
+	messageService := service.NewMessageService(messageRepo, conversationRepo)
+
 	authHandler := handler.NewAuthHandler(authService)
+	contactHandler := handler.NewContactHandler(contactService)
+	messageHandler := handler.NewMessageHandler(messageService)
+
+	hub := websocket.NewHub()
+	go hub.Run()
+	wsHandler := handler.NewWSHandler(hub)
 	
 	r := gin.Default()
-	router.Setup(r, authService, authHandler)
+	router.Setup(r, authService, authHandler, contactHandler, messageHandler, wsHandler)
 	
 	log.Printf("Server starting on port %s", cfg.Server.Port)
 	if err := r.Run(":" + cfg.Server.Port); err != nil {
