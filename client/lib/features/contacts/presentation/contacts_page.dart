@@ -133,18 +133,20 @@ class _ContactsPageState extends ConsumerState<ContactsPage> {
   }
   
   Future<void> _addContact(String contactId) async {
-    try {
-      await ref.read(contactsRepositoryProvider).addContact(contactId);
-      if (mounted) {
+    final result = await ref.read(contactsRepositoryProvider).addContact(contactId);
+    if (mounted) {
+      if (result == 'success') {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('好友请求已发送')),
         );
         ref.invalidate(contactsProvider);
-      }
-    } catch (e) {
-      if (mounted) {
+      } else if (result == 'already_exists') {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('添加失败: $e')),
+          const SnackBar(content: Text('该联系人已存在')),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(result)),
         );
       }
     }

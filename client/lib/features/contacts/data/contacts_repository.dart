@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import '../../../core/network/api_client.dart';
 import '../domain/contact.dart';
 
@@ -17,11 +18,28 @@ class ContactsRepository {
     return Map<String, dynamic>.from(data);
   }
   
-  Future<void> addContact(String contactId, {String? remark}) async {
-    await _api.post('/contacts/request', data: {
-      'contact_id': contactId,
-      'remark': remark,
-    });
+  Future<String> addContact(String contactId, {String? remark}) async {
+    try {
+      final response = await _api.post('/contacts/request', data: {
+        'contact_id': contactId,
+        'remark': remark,
+      });
+      return 'success';
+    } on DioException catch (e) {
+      if (e.response?.data != null) {
+        final data = e.response!.data;
+        if (data is Map) {
+          final code = data['code'];
+          if (code == 'CONTACT_ALREADY_EXISTS') {
+            return 'already_exists';
+          }
+          return data['message']?.toString() ?? '添加失败';
+        }
+      }
+      return '网络错误，请重试';
+    } catch (e) {
+      return '添加失败: $e';
+    }
   }
   
   Future<void> acceptContact(String contactId) async {
