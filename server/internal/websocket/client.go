@@ -87,5 +87,7 @@ func (c *Client) handleMessage(msg *WSMessage) {
 		// Client requests message sync after reconnection
 		// The actual sync is handled by the handler layer
 		c.send <- []byte(`{"event":"sync:ack"}`)
+	case "call:offer", "call:answer", "call:ice-candidate", "call:join", "call:leave":
+		c.hub.BroadcastCallSignal(msg, c.userID)
 	}
 }

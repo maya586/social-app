@@ -1,6 +1,7 @@
 package websocket
 
 import (
+	"encoding/json"
 	"sync"
 	"github.com/google/uuid"
 )
@@ -77,4 +78,22 @@ func (h *Hub) Register(client *Client) {
 
 func (h *Hub) Unregister(client *Client) {
 	h.unregister <- client
+}
+
+func (h *Hub) BroadcastCallSignal(msg *WSMessage, senderID uuid.UUID) {
+	data, err := json.Marshal(msg)
+	if err != nil {
+		return
+	}
+	
+	h.mu.RLock()
+	for userID, client := range h.clients {
+		if userID != senderID {
+			select {
+			case client.send <- data:
+			default:
+			}
+		}
+	}
+	h.mu.RUnlock()
 }
