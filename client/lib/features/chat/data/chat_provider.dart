@@ -2,18 +2,24 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../data/chat_repository.dart';
 import '../domain/message.dart';
 import '../domain/conversation.dart';
+import '../../auth/data/auth_provider.dart';
 
 final chatRepositoryProvider = Provider((ref) => ChatRepository());
 
 final conversationsProvider = StateNotifierProvider<ConversationsNotifier, AsyncValue<List<Conversation>>>((ref) {
-  return ConversationsNotifier(ref.watch(chatRepositoryProvider));
+  final authState = ref.watch(authStateProvider);
+  final isLoggedIn = authState.hasValue && authState.value != null;
+  return ConversationsNotifier(ref.watch(chatRepositoryProvider), isLoggedIn);
 });
 
 class ConversationsNotifier extends StateNotifier<AsyncValue<List<Conversation>>> {
   final ChatRepository _repository;
+  final bool _isLoggedIn;
   
-  ConversationsNotifier(this._repository) : super(const AsyncValue.loading()) {
-    loadConversations();
+  ConversationsNotifier(this._repository, this._isLoggedIn) : super(const AsyncValue.data([])) {
+    if (_isLoggedIn) {
+      loadConversations();
+    }
   }
   
   Future<void> loadConversations() async {
