@@ -6,6 +6,8 @@ import 'dart:io';
 import '../data/chat_provider.dart';
 import '../domain/message.dart';
 import '../../../core/network/api_client.dart';
+import '../../../core/router/app_router.dart';
+import '../../call/domain/call_state.dart';
 
 class ChatPage extends ConsumerStatefulWidget {
   final String conversationId;
@@ -139,20 +141,20 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('聊天'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.phone),
-            onPressed: () {
-              // TODO: Implement voice call
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.videocam),
-            onPressed: () {
-              // TODO: Implement video call
-            },
-          ),
-        ],
+actions: [
+           IconButton(
+             icon: const Icon(Icons.phone),
+             onPressed: () {
+               ref.read(routerProvider.notifier).goCall(widget.conversationId, CallType.audio);
+             },
+           ),
+           IconButton(
+             icon: const Icon(Icons.videocam),
+             onPressed: () {
+               ref.read(routerProvider.notifier).goCall(widget.conversationId, CallType.video);
+             },
+           ),
+         ],
       ),
       body: Column(
         children: [

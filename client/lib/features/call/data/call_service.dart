@@ -17,8 +17,40 @@ class CallService extends StateNotifier<CallState> {
   final List<MediaStream> _remoteStreams = [];
   String? _roomId;
   String? _currentUserId;
+  StreamSubscription? _wsSubscription;
   
-  CallService() : super(const CallState());
+  CallService() : super(const CallState()) {
+    _initWebSocketListener();
+  }
+  
+  void _initWebSocketListener() {
+    _wsSubscription = WebSocketService().messages.listen(_handleWebSocketMessage);
+  }
+  
+  void _handleWebSocketMessage(Map<String, dynamic> message) {
+    final event = message['event'] as String?;
+    final data = message['data'] as Map<String, dynamic>?;
+    
+    if (data == null) return;
+    
+    switch (event) {
+      case 'call:offer':
+        handleOffer(data);
+        break;
+      case 'call:answer':
+        handleAnswer(data);
+        break;
+      case 'call:ice-candidate':
+        handleIceCandidate(data);
+        break;
+      case 'call:join':
+        // Someone joined the call
+        break;
+      case 'call:leave':
+        // Someone left the call
+        break;
+    }
+  }
   
   Future<void> createCall(String conversationId, CallType type) async {
     state = state.copyWith(status: CallStatus.connecting, callType: type);
@@ -230,6 +262,13 @@ class CallService extends StateNotifier<CallState> {
   }
   
   void reset() {
+    _wsSubscription?.cancel();
     state = const CallState();
+  }
+  
+  @override
+  void dispose() {
+    _wsSubscription?.cancel();
+    super.dispose();
   }
 }

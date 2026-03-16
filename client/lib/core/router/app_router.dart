@@ -6,6 +6,8 @@ import '../../features/chat/presentation/conversation_list_page.dart';
 import '../../features/chat/presentation/chat_page.dart';
 import '../../features/contacts/presentation/contacts_page.dart';
 import '../../features/profile/presentation/profile_page.dart';
+import '../../features/call/presentation/call_page.dart';
+import '../../features/call/domain/call_state.dart';
 
 final routerProvider = StateNotifierProvider<RouterNotifier, String>((ref) {
   return RouterNotifier();
@@ -21,6 +23,7 @@ class RouterNotifier extends StateNotifier<String> {
   void goChat(String conversationId) => state = '/chat/$conversationId';
   void goContacts() => state = '/contacts';
   void goProfile() => state = '/profile';
+  void goCall(String conversationId, CallType type) => state = '/call/$conversationId/${type == CallType.audio ? 'audio' : 'video'}';
 }
 
 Widget buildRouter(WidgetRef ref) {
@@ -29,6 +32,14 @@ Widget buildRouter(WidgetRef ref) {
   if (route.startsWith('/chat/')) {
     final conversationId = route.split('/').last;
     return ChatPage(conversationId: conversationId);
+  }
+  
+  if (route.startsWith('/call/')) {
+    final parts = route.split('/');
+    final conversationId = parts[2];
+    final callTypeStr = parts[3];
+    final callType = callTypeStr == 'video' ? CallType.video : CallType.audio;
+    return CallPage(conversationId: conversationId, callType: callType);
   }
   
   switch (route) {

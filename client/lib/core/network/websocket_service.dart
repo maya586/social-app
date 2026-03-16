@@ -69,6 +69,13 @@ class WebSocketService {
       case 'sync:ack':
         // Sync acknowledged
         break;
+      case 'call:offer':
+      case 'call:answer':
+      case 'call:ice-candidate':
+      case 'call:join':
+      case 'call:leave':
+        _messageController.add(message);
+        break;
       default:
         _messageController.add(message);
     }
