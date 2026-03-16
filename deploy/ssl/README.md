@@ -1,0 +1,6 @@
+# Place SSL certificates here
+# - cert.pem: SSL certificate
+# - key.pem: SSL private key
+#
+# For development, generate self-signed certificates:
+# openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout key.pem -out cert.pem -subj "/CN=localhost"
