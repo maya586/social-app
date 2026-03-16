@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/router/app_router.dart';
 import 'features/auth/data/auth_provider.dart';
 import 'features/auth/data/auth_repository.dart';
-import 'features/call/data/call_notification_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -42,9 +41,7 @@ class MyApp extends ConsumerWidget {
           centerTitle: true,
         ),
       ),
-      home: CallNotificationOverlay(
-        child: buildRouter(ref),
-      ),
+      home: buildRouter(ref),
     );
   }
 }

@@ -2,14 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:dio/dio.dart';
 import 'dart:io';
 import '../data/chat_provider.dart';
-import '../data/voice_recorder_service.dart';
 import '../domain/message.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/router/app_router.dart';
-import '../../call/domain/call_state.dart';
-import 'voice_recording_widget.dart';
 
 class ChatPage extends ConsumerStatefulWidget {
   final String conversationId;
@@ -126,38 +124,6 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     _scrollToBottom();
   }
   
-  Future<void> _sendVoiceMessage(String filePath, Duration duration) async {
-    setState(() => _isUploading = true);
-    
-    try {
-      final formData = FormData.fromMap({
-        'file': await MultipartFile.fromFile(filePath),
-        'type': 'voice',
-      });
-      
-      final response = await ApiClient().dio.post('/files/upload', data: formData);
-      final url = response.data['url'];
-      
-      ref.read(messagesProvider(widget.conversationId).notifier).sendMessage(
-        type: 'voice',
-        mediaUrl: url,
-        duration: duration.inSeconds,
-      );
-      
-      _scrollToBottom();
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('语音上传失败: $e')),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _isUploading = false);
-      }
-    }
-  }
-  
   void _scrollToBottom() {
     if (_scrollController.hasClients) {
       _scrollController.animateTo(
@@ -174,18 +140,22 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     
     return Scaffold(
       appBar: AppBar(
-        title: const Text('聊天'),
-actions: [
+title: const Text('聊天'),
+        actions: [
            IconButton(
              icon: const Icon(Icons.phone),
              onPressed: () {
-               ref.read(routerProvider.notifier).goCall(widget.conversationId, CallType.audio);
+               ScaffoldMessenger.of(context).showSnackBar(
+                 const SnackBar(content: Text('通话功能需要完整版客户端')),
+               );
              },
            ),
            IconButton(
              icon: const Icon(Icons.videocam),
              onPressed: () {
-               ref.read(routerProvider.notifier).goCall(widget.conversationId, CallType.video);
+               ScaffoldMessenger.of(context).showSnackBar(
+                 const SnackBar(content: Text('通话功能需要完整版客户端')),
+               );
              },
            ),
          ],
@@ -256,13 +226,12 @@ actions: [
                       );
                     },
                   ),
-                  VoiceRecordingWidget(
-                    onRecordComplete: () async {
-                      final recorderState = ref.read(voiceRecorderProvider);
-                      if (recorderState.filePath != null) {
-                        await _sendVoiceMessage(recorderState.filePath!, recorderState.duration);
-                        ref.read(voiceRecorderProvider.notifier).reset();
-                      }
+                  IconButton(
+                    icon: const Icon(Icons.mic),
+                    onPressed: () {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('语音消息需要完整版客户端')),
+                      );
                     },
                   ),
                   Expanded(
@@ -359,9 +328,16 @@ class _MessageBubble extends StatelessWidget {
                       ),
               )
             else if (message.type == 'voice')
-              VoiceMessageWidget(
-                audioUrl: 'http://localhost:8080/api/v1${message.mediaUrl ?? ''}',
-                duration: Duration(seconds: message.duration ?? 0),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.play_arrow, color: isMe ? Colors.white : Colors.black),
+                  const SizedBox(width: 8),
+                  Text(
+                    '${message.duration ?? 0}s',
+                    style: TextStyle(color: isMe ? Colors.white : Colors.black),
+                  ),
+                ],
               ),
             const SizedBox(height: 4),
             Text(

@@ -4,6 +4,7 @@ import '../../../core/router/app_router.dart';
 import '../../../core/network/websocket_service.dart';
 import '../data/chat_provider.dart';
 import '../domain/conversation.dart';
+import '../../auth/data/auth_provider.dart';
 
 class ConversationListPage extends ConsumerStatefulWidget {
   const ConversationListPage({super.key});
