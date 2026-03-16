@@ -9,7 +9,7 @@ import (
 
 func Setup(r *gin.Engine, authService *service.AuthService, authHandler *handler.AuthHandler,
 	contactHandler *handler.ContactHandler, messageHandler *handler.MessageHandler,
-	fileHandler *handler.FileHandler, wsHandler *handler.WSHandler) {
+	fileHandler *handler.FileHandler, callHandler *handler.CallHandler, wsHandler *handler.WSHandler) {
 	
 	r.Use(middleware.CORS())
 
@@ -54,6 +54,15 @@ func Setup(r *gin.Engine, authService *service.AuthService, authHandler *handler
 				conversations.GET("", messageHandler.ListConversations)
 				conversations.POST("", messageHandler.CreateConversation)
 				conversations.GET("/:id", messageHandler.GetConversation)
+			}
+
+			calls := protected.Group("/calls")
+			{
+				calls.POST("/create", callHandler.CreateCall)
+				calls.POST("/join", callHandler.JoinCall)
+				calls.DELETE("/:room_id", callHandler.LeaveCall)
+				calls.POST("/signal", callHandler.Signal)
+				calls.GET("/stats", callHandler.GetCallStats)
 			}
 		}
 	}
