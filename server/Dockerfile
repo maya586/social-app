@@ -1,19 +1,21 @@
-FROM golang:1.22-alpine AS builder
+FROM golang:alpine AS builder
 
-RUN apk add --no-cache git
+RUN apk add --no-cache git gcc musl-dev
 
 WORKDIR /app
 
-COPY go.mod go.sum ./
-RUN go mod download
+ENV GOPROXY=https://goproxy.cn,direct
+
+COPY go.mod ./
+RUN go mod download || true
 
 COPY . .
-
+RUN go mod tidy
 RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o server ./cmd/server
 
 FROM alpine:latest
 
-RUN apk --no-cache add ca-certificates
+RUN apk --no-cache add ca-certificates tzdata
 
 WORKDIR /root/
 
