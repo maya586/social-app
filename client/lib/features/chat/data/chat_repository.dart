@@ -12,8 +12,9 @@ class ChatRepository {
     }
     
     final response = await _api.get(url);
-    final List<dynamic> data = response.data['conversations'] ?? [];
-    return data.map((json) => Conversation.fromJson(json)).toList();
+    final data = response.data['data'] ?? response.data;
+    final List<dynamic> conversations = data['conversations'] ?? [];
+    return conversations.map((json) => Conversation.fromJson(json)).toList();
   }
   
   Future<List<Message>> getMessages(String conversationId, {String? cursor, int limit = 20}) async {
@@ -23,8 +24,9 @@ class ChatRepository {
     }
     
     final response = await _api.get(url);
-    final List<dynamic> data = response.data['messages'] ?? [];
-    return data.map((json) => Message.fromJson(json)).toList();
+    final data = response.data['data'] ?? response.data;
+    final List<dynamic> messages = data['messages'] ?? [];
+    return messages.map((json) => Message.fromJson(json)).toList();
   }
   
   Future<Message> sendMessage({
@@ -41,7 +43,8 @@ class ChatRepository {
       'media_url': mediaUrl,
       'duration': duration,
     });
-    return Message.fromJson(response.data);
+    final data = response.data['data'] ?? response.data;
+    return Message.fromJson(data);
   }
   
   Future<void> recallMessage(String messageId) async {
@@ -53,6 +56,7 @@ class ChatRepository {
       'type': 'private',
       'contact_id': contactId,
     });
-    return Conversation.fromJson(response.data);
+    final data = response.data['data'] ?? response.data;
+    return Conversation.fromJson(data);
   }
 }

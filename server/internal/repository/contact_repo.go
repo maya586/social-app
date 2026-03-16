@@ -1,9 +1,9 @@
 package repository
 
 import (
-	"github.com/google/uuid"
 	"github.com/example/social-app/server/internal/database"
 	"github.com/example/social-app/server/internal/model"
+	"github.com/google/uuid"
 )
 
 type ContactRepo struct{}
@@ -31,7 +31,7 @@ func (r *ContactRepo) FindByUserAndContact(userID, contactID uuid.UUID) (*model.
 func (r *ContactRepo) ListByUserID(userID uuid.UUID, limit, offset int) ([]model.Contact, error) {
 	var contacts []model.Contact
 	err := database.DB.Where("user_id = ? AND status = ?", userID, model.ContactStatusAccepted).
-		Preload("Contact").
+		Preload("ContactUser").
 		Limit(limit).Offset(offset).
 		Find(&contacts).Error
 	return contacts, err
@@ -40,7 +40,7 @@ func (r *ContactRepo) ListByUserID(userID uuid.UUID, limit, offset int) ([]model
 func (r *ContactRepo) ListPendingByUserID(userID uuid.UUID) ([]model.Contact, error) {
 	var contacts []model.Contact
 	err := database.DB.Where("contact_id = ? AND status = ?", userID, model.ContactStatusPending).
-		Preload("User").
+		Preload("ContactUser").
 		Find(&contacts).Error
 	return contacts, err
 }

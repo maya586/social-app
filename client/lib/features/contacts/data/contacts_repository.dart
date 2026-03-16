@@ -6,8 +6,9 @@ class ContactsRepository {
   
   Future<List<Contact>> getContacts({int limit = 50, int offset = 0}) async {
     final response = await _api.get('/contacts?limit=$limit&offset=$offset');
-    final List<dynamic> data = response.data ?? [];
-    return data.map((json) => Contact.fromJson(json)).toList();
+    final data = response.data['data'] ?? response.data;
+    final List<dynamic> contacts = data is List ? data : (data['contacts'] ?? []);
+    return contacts.map((json) => Contact.fromJson(json)).toList();
   }
   
   Future<void> addContact(String contactId, {String? remark}) async {
