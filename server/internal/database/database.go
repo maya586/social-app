@@ -34,5 +34,6 @@ func Migrate() error {
 		&model.Message{},
 		&model.Contact{},
 		&model.ConversationMember{},
+		&model.DeviceToken{},
 	)
 }

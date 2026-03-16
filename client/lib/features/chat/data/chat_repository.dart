@@ -32,12 +32,14 @@ class ChatRepository {
     required String type,
     String? content,
     String? mediaUrl,
+    int? duration,
   }) async {
     final response = await _api.post('/messages', data: {
       'conversation_id': conversationId,
       'type': type,
       'content': content,
       'media_url': mediaUrl,
+      'duration': duration,
     });
     return Message.fromJson(response.data);
   }

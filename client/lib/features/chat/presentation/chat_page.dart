@@ -4,10 +4,12 @@ import 'package:intl/intl.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 import '../data/chat_provider.dart';
+import '../data/voice_recorder_service.dart';
 import '../domain/message.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/router/app_router.dart';
 import '../../call/domain/call_state.dart';
+import 'voice_recording_widget.dart';
 
 class ChatPage extends ConsumerStatefulWidget {
   final String conversationId;
@@ -124,6 +126,38 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     _scrollToBottom();
   }
   
+  Future<void> _sendVoiceMessage(String filePath, Duration duration) async {
+    setState(() => _isUploading = true);
+    
+    try {
+      final formData = FormData.fromMap({
+        'file': await MultipartFile.fromFile(filePath),
+        'type': 'voice',
+      });
+      
+      final response = await ApiClient().dio.post('/files/upload', data: formData);
+      final url = response.data['url'];
+      
+      ref.read(messagesProvider(widget.conversationId).notifier).sendMessage(
+        type: 'voice',
+        mediaUrl: url,
+        duration: duration.inSeconds,
+      );
+      
+      _scrollToBottom();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('语音上传失败: $e')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isUploading = false);
+      }
+    }
+  }
+  
   void _scrollToBottom() {
     if (_scrollController.hasClients) {
       _scrollController.animateTo(
@@ -222,10 +256,13 @@ actions: [
                       );
                     },
                   ),
-                  IconButton(
-                    icon: const Icon(Icons.mic),
-                    onPressed: () {
-                      // TODO: Implement voice message
+                  VoiceRecordingWidget(
+                    onRecordComplete: () async {
+                      final recorderState = ref.read(voiceRecorderProvider);
+                      if (recorderState.filePath != null) {
+                        await _sendVoiceMessage(recorderState.filePath!, recorderState.duration);
+                        ref.read(voiceRecorderProvider.notifier).reset();
+                      }
                     },
                   ),
                   Expanded(
@@ -322,23 +359,9 @@ class _MessageBubble extends StatelessWidget {
                       ),
               )
             else if (message.type == 'voice')
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.play_arrow, color: isMe ? Colors.white : Colors.black),
-                  Container(
-                    width: 80,
-                    height: 2,
-                    color: isMe ? Colors.white54 : Colors.black45,
-                  ),
-                  Text(
-                    '0:05',
-                    style: TextStyle(
-                      color: isMe ? Colors.white : Colors.black,
-                      fontSize: 12,
-                    ),
-                  ),
-                ],
+              VoiceMessageWidget(
+                audioUrl: 'http://localhost:8080/api/v1${message.mediaUrl ?? ''}',
+                duration: Duration(seconds: message.duration ?? 0),
               ),
             const SizedBox(height: 4),
             Text(

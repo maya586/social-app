@@ -41,6 +41,17 @@ type SignalInput struct {
 	Candidate *pionwebrtc.ICECandidateInit   `json:"candidate,omitempty"`
 }
 
+// CreateCall godoc
+// @Summary 创建通话
+// @Description 创建新的音视频通话房间
+// @Tags 通话
+// @Security BearerAuth
+// @Accept json
+// @Produce json
+// @Param request body CreateCallInput true "通话信息"
+// @Success 201 {object} map[string]interface{} "创建成功"
+// @Failure 400 {object} map[string]string "参数错误"
+// @Router /calls/create [post]
 func (h *CallHandler) CreateCall(c *gin.Context) {
 	userID := middleware.GetUserID(c).(uuid.UUID)
 	
@@ -100,6 +111,18 @@ func (h *CallHandler) CreateCall(c *gin.Context) {
 	})
 }
 
+// JoinCall godoc
+// @Summary 加入通话
+// @Description 加入已有的通话房间
+// @Tags 通话
+// @Security BearerAuth
+// @Accept json
+// @Produce json
+// @Param request body JoinCallInput true "房间信息"
+// @Success 200 {object} map[string]interface{} "加入成功"
+// @Failure 400 {object} map[string]string "参数错误"
+// @Failure 404 {object} map[string]string "房间不存在"
+// @Router /calls/join [post]
 func (h *CallHandler) JoinCall(c *gin.Context) {
 	userID := middleware.GetUserID(c).(uuid.UUID)
 	
@@ -136,6 +159,16 @@ func (h *CallHandler) JoinCall(c *gin.Context) {
 	})
 }
 
+// LeaveCall godoc
+// @Summary 离开通话
+// @Description 离开通话房间
+// @Tags 通话
+// @Security BearerAuth
+// @Produce json
+// @Param room_id path string true "房间ID"
+// @Success 200 {object} map[string]interface{} "离开成功"
+// @Failure 400 {object} map[string]string "参数错误"
+// @Router /calls/{room_id} [delete]
 func (h *CallHandler) LeaveCall(c *gin.Context) {
 	userID := middleware.GetUserID(c).(uuid.UUID)
 	
@@ -151,6 +184,17 @@ func (h *CallHandler) LeaveCall(c *gin.Context) {
 	response.Success(c, nil)
 }
 
+// Signal godoc
+// @Summary WebRTC信令
+// @Description 处理WebRTC信令交换
+// @Tags 通话
+// @Security BearerAuth
+// @Accept json
+// @Produce json
+// @Param request body SignalInput true "信令数据"
+// @Success 200 {object} map[string]interface{} "处理成功"
+// @Failure 400 {object} map[string]string "参数错误"
+// @Router /calls/signal [post]
 func (h *CallHandler) Signal(c *gin.Context) {
 	userID := middleware.GetUserID(c).(uuid.UUID)
 	
@@ -199,10 +243,43 @@ func (h *CallHandler) Signal(c *gin.Context) {
 	}
 }
 
+// GetCallStats godoc
+// @Summary 获取通话统计
+// @Description 获取当前所有通话房间的统计信息
+// @Tags 通话
+// @Security BearerAuth
+// @Produce json
+// @Success 200 {object} map[string]interface{} "统计信息"
+// @Router /calls/stats [get]
 func (h *CallHandler) GetCallStats(c *gin.Context) {
 	sfu := webrtc.GetSFU()
 	stats := sfu.GetStats()
 	response.Success(c, stats)
+}
+
+// GetICEServers godoc
+// @Summary 获取ICE服务器配置
+// @Description 获取WebRTC连接所需的ICE服务器列表
+// @Tags 通话
+// @Security BearerAuth
+// @Produce json
+// @Success 200 {object} map[string]interface{} "ICE服务器列表"
+// @Router /calls/ice-servers [get]
+func (h *CallHandler) GetICEServers(c *gin.Context) {
+	sfu := webrtc.GetSFU()
+	
+	servers := make([]map[string]interface{}, 0)
+	for _, server := range sfu.GetICEServers() {
+		servers = append(servers, map[string]interface{}{
+			"urls": server.URLs,
+			"username": server.Username,
+			"credential": server.Credential,
+		})
+	}
+	
+	response.Success(c, map[string]interface{}{
+		"ice_servers": servers,
+	})
 }
 
 func (h *CallHandler) HandleCallSignal(event string, data json.RawMessage, userID uuid.UUID) (interface{}, error) {

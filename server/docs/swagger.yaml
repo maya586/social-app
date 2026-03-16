@@ -1,0 +1,654 @@
+basePath: /api/v1
+definitions:
+  handler.CreateCallInput:
+    properties:
+      conversation_id:
+        type: string
+      type:
+        $ref: '#/definitions/webrtc.CallType'
+    required:
+    - conversation_id
+    - type
+    type: object
+  handler.JoinCallInput:
+    properties:
+      room_id:
+        type: string
+    required:
+    - room_id
+    type: object
+  handler.SignalInput:
+    type: object
+  model.Conversation:
+    properties:
+      avatar_url:
+        type: string
+      created_at:
+        type: string
+      id:
+        type: string
+      last_message_at:
+        type: string
+      name:
+        type: string
+      owner_id:
+        type: string
+      type:
+        $ref: '#/definitions/model.ConversationType'
+    type: object
+  model.ConversationType:
+    enum:
+    - private
+    - group
+    type: string
+    x-enum-varnames:
+    - ConversationTypePrivate
+    - ConversationTypeGroup
+  model.Message:
+    properties:
+      content:
+        type: string
+      conversation_id:
+        type: string
+      created_at:
+        type: string
+      id:
+        type: string
+      media_url:
+        type: string
+      sender_id:
+        type: string
+      status:
+        $ref: '#/definitions/model.MessageStatus'
+      type:
+        $ref: '#/definitions/model.MessageType'
+    type: object
+  model.MessageStatus:
+    enum:
+    - sending
+    - sent
+    - delivered
+    - read
+    - failed
+    type: string
+    x-enum-varnames:
+    - MessageStatusSending
+    - MessageStatusSent
+    - MessageStatusDelivered
+    - MessageStatusRead
+    - MessageStatusFailed
+  model.MessageType:
+    enum:
+    - text
+    - image
+    - voice
+    - video
+    - file
+    type: string
+    x-enum-varnames:
+    - MessageTypeText
+    - MessageTypeImage
+    - MessageTypeVoice
+    - MessageTypeVideo
+    - MessageTypeFile
+  service.LoginInput:
+    properties:
+      password:
+        type: string
+      phone:
+        type: string
+    required:
+    - password
+    - phone
+    type: object
+  service.RegisterInput:
+    properties:
+      nickname:
+        maxLength: 20
+        minLength: 2
+        type: string
+      password:
+        maxLength: 32
+        minLength: 8
+        type: string
+      phone:
+        type: string
+    required:
+    - nickname
+    - password
+    - phone
+    type: object
+  service.SendMessageInput:
+    properties:
+      content:
+        type: string
+      conversation_id:
+        type: string
+      media_url:
+        type: string
+      type:
+        $ref: '#/definitions/model.MessageType'
+    required:
+    - conversation_id
+    - type
+    type: object
+  webrtc.CallType:
+    enum:
+    - audio
+    - video
+    type: string
+    x-enum-varnames:
+    - CallTypeAudio
+    - CallTypeVideo
+host: localhost:8080
+info:
+  contact:
+    email: support@swagger.io
+    name: API Support
+    url: http://www.swagger.io/support
+  description: 跨平台社交应用 API 服务
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+  termsOfService: http://swagger.io/terms/
+  title: Social App API
+  version: "1.0"
+paths:
+  /auth/login:
+    post:
+      consumes:
+      - application/json
+      description: 用户登录获取访问令牌
+      parameters:
+      - description: 登录信息
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/service.LoginInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 登录成功
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: 认证失败
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: 用户登录
+      tags:
+      - 认证
+  /auth/logout:
+    post:
+      description: 用户登出，使令牌失效
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 登出成功
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: 用户登出
+      tags:
+      - 认证
+  /auth/refresh-token:
+    post:
+      consumes:
+      - application/json
+      description: 使用刷新令牌获取新的访问令牌
+      parameters:
+      - description: 刷新令牌
+        in: body
+        name: request
+        required: true
+        schema:
+          additionalProperties:
+            type: string
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 刷新成功
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: 无效的刷新令牌
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: 刷新令牌
+      tags:
+      - 认证
+  /auth/register:
+    post:
+      consumes:
+      - application/json
+      description: 注册新用户账号
+      parameters:
+      - description: 注册信息
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/service.RegisterInput'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: 注册成功
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: 参数错误
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "409":
+          description: 手机号已存在
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: 用户注册
+      tags:
+      - 认证
+  /calls/{room_id}:
+    delete:
+      description: 离开通话房间
+      parameters:
+      - description: 房间ID
+        in: path
+        name: room_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 离开成功
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: 参数错误
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: 离开通话
+      tags:
+      - 通话
+  /calls/create:
+    post:
+      consumes:
+      - application/json
+      description: 创建新的音视频通话房间
+      parameters:
+      - description: 通话信息
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handler.CreateCallInput'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: 创建成功
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: 参数错误
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: 创建通话
+      tags:
+      - 通话
+  /calls/ice-servers:
+    get:
+      description: 获取WebRTC连接所需的ICE服务器列表
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: ICE服务器列表
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: 获取ICE服务器配置
+      tags:
+      - 通话
+  /calls/join:
+    post:
+      consumes:
+      - application/json
+      description: 加入已有的通话房间
+      parameters:
+      - description: 房间信息
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handler.JoinCallInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 加入成功
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: 参数错误
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: 房间不存在
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: 加入通话
+      tags:
+      - 通话
+  /calls/signal:
+    post:
+      consumes:
+      - application/json
+      description: 处理WebRTC信令交换
+      parameters:
+      - description: 信令数据
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handler.SignalInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 处理成功
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: 参数错误
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: WebRTC信令
+      tags:
+      - 通话
+  /calls/stats:
+    get:
+      description: 获取当前所有通话房间的统计信息
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 统计信息
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: 获取通话统计
+      tags:
+      - 通话
+  /conversations:
+    get:
+      description: 获取用户的会话列表
+      parameters:
+      - default: 20
+        description: 数量限制
+        in: query
+        name: limit
+        type: integer
+      - default: 0
+        description: 偏移量
+        in: query
+        name: offset
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 会话列表
+          schema:
+            items:
+              $ref: '#/definitions/model.Conversation'
+            type: array
+      security:
+      - BearerAuth: []
+      summary: 获取会话列表
+      tags:
+      - 会话
+    post:
+      consumes:
+      - application/json
+      description: 创建新会话（私聊或群聊）
+      parameters:
+      - description: 会话信息
+        in: body
+        name: request
+        required: true
+        schema:
+          additionalProperties: true
+          type: object
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: 创建成功
+          schema:
+            $ref: '#/definitions/model.Conversation'
+        "400":
+          description: 参数错误
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: 创建会话
+      tags:
+      - 会话
+  /conversations/{id}:
+    get:
+      description: 获取单个会话的详细信息
+      parameters:
+      - description: 会话ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 会话详情
+          schema:
+            $ref: '#/definitions/model.Conversation'
+        "404":
+          description: 会话不存在
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: 获取会话详情
+      tags:
+      - 会话
+  /messages:
+    post:
+      consumes:
+      - application/json
+      description: 发送消息到会话
+      parameters:
+      - description: 消息内容
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/service.SendMessageInput'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: 发送成功
+          schema:
+            $ref: '#/definitions/model.Message'
+        "400":
+          description: 参数错误
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: 无权限
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: 发送消息
+      tags:
+      - 消息
+  /messages/{id}:
+    delete:
+      description: 撤回已发送的消息（2分钟内）
+      parameters:
+      - description: 消息ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 撤回成功
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: 参数错误或超时
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: 消息不存在
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: 撤回消息
+      tags:
+      - 消息
+  /messages/conversation/{id}:
+    get:
+      description: 获取会话的消息列表
+      parameters:
+      - description: 会话ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: 分页游标
+        in: query
+        name: cursor
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 消息列表
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: 参数错误
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: 无权限
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: 获取消息列表
+      tags:
+      - 消息
+  /messages/conversation/{id}/read:
+    put:
+      description: 标记会话中的消息为已读
+      parameters:
+      - description: 会话ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 标记成功
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: 参数错误
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: 标记已读
+      tags:
+      - 消息
+securityDefinitions:
+  BearerAuth:
+    description: Type "Bearer" followed by a space and JWT token.
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"

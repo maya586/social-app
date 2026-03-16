@@ -52,13 +52,14 @@ class MessagesNotifier extends StateNotifier<AsyncValue<List<Message>>> {
     }
   }
   
-  Future<void> sendMessage({required String type, String? content, String? mediaUrl}) async {
+  Future<void> sendMessage({required String type, String? content, String? mediaUrl, int? duration}) async {
     try {
       final message = await _repository.sendMessage(
         conversationId: conversationId,
         type: type,
         content: content,
         mediaUrl: mediaUrl,
+        duration: duration,
       );
       state.whenData((messages) {
         state = AsyncValue.data([...messages, message]);

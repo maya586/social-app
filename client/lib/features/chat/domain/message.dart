@@ -5,6 +5,7 @@ class Message {
   final String type;
   final String? content;
   final String? mediaUrl;
+  final int? duration;
   final String status;
   final DateTime createdAt;
   
@@ -15,6 +16,7 @@ class Message {
     required this.type,
     this.content,
     this.mediaUrl,
+    this.duration,
     required this.status,
     required this.createdAt,
   });
@@ -27,6 +29,7 @@ class Message {
       type: json['type'],
       content: json['content'],
       mediaUrl: json['media_url'],
+      duration: json['duration'],
       status: json['status'],
       createdAt: DateTime.parse(json['created_at']),
     );

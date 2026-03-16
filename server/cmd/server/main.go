@@ -3,6 +3,8 @@ package main
 import (
 	"log"
 	"github.com/gin-gonic/gin"
+	
+	_ "github.com/example/social-app/server/docs"
 	"github.com/example/social-app/server/internal/cache"
 	"github.com/example/social-app/server/internal/config"
 	"github.com/example/social-app/server/internal/database"
@@ -15,6 +17,24 @@ import (
 	"github.com/example/social-app/server/internal/websocket"
 )
 
+// @title Social App API
+// @version 1.0
+// @description 跨平台社交应用 API 服务
+// @termsOfService http://swagger.io/terms/
+
+// @contact.name API Support
+// @contact.url http://www.swagger.io/support
+// @contact.email support@swagger.io
+
+// @license.name MIT
+// @license.url https://opensource.org/licenses/MIT
+
+// @host localhost:8080
+// @BasePath /api/v1
+// @securityDefinitions.apikey BearerAuth
+// @in header
+// @name Authorization
+// @description Type "Bearer" followed by a space and JWT token.
 func main() {
 	cfg := config.Load()
 	
@@ -53,10 +73,11 @@ func main() {
 	messageHandler := handler.NewMessageHandler(messageService)
 	fileHandler := handler.NewFileHandler()
 	callHandler := handler.NewCallHandler(hub)
+	deviceTokenHandler := handler.NewDeviceTokenHandler()
 	wsHandler := handler.NewWSHandler(hub)
 	
 	r := gin.Default()
-	router.Setup(r, authService, authHandler, contactHandler, messageHandler, fileHandler, callHandler, wsHandler)
+	router.Setup(r, authService, authHandler, contactHandler, messageHandler, fileHandler, callHandler, deviceTokenHandler, wsHandler)
 	
 	log.Printf("Server starting on port %s", cfg.Server.Port)
 	if err := r.Run(":" + cfg.Server.Port); err != nil {

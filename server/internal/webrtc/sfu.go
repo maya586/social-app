@@ -7,12 +7,14 @@ import (
 	"time"
 	"github.com/google/uuid"
 	"github.com/pion/webrtc/v3"
+	"github.com/example/social-app/server/internal/config"
 )
 
 type SFU struct {
-	rooms    map[uuid.UUID]*CallRoom
-	api      *webrtc.API
-	mu       sync.RWMutex
+	rooms       map[uuid.UUID]*CallRoom
+	api         *webrtc.API
+	mu          sync.RWMutex
+	iceServers  []webrtc.ICEServer
 }
 
 var sfuInstance *SFU
@@ -21,11 +23,34 @@ var sfuOnce sync.Once
 func GetSFU() *SFU {
 	sfuOnce.Do(func() {
 		sfuInstance = &SFU{
-			rooms: make(map[uuid.UUID]*CallRoom),
-			api:   webrtc.NewAPI(),
+			rooms:      make(map[uuid.UUID]*CallRoom),
+			api:        webrtc.NewAPI(),
+			iceServers: buildICEServers(),
 		}
 	})
 	return sfuInstance
+}
+
+func buildICEServers() []webrtc.ICEServer {
+	cfg := config.Load()
+	var servers []webrtc.ICEServer
+	
+	for _, stun := range cfg.WebRTC.STUNServers {
+		servers = append(servers, webrtc.ICEServer{
+			URLs: []string{stun},
+		})
+	}
+	
+	for _, turn := range cfg.WebRTC.TURNServers {
+		servers = append(servers, webrtc.ICEServer{
+			URLs:           []string{turn.URL},
+			Username:       turn.Username,
+			Credential:     turn.Password,
+			CredentialType: webrtc.ICECredentialTypePassword,
+		})
+	}
+	
+	return servers
 }
 
 func (s *SFU) CreateRoom(conversationID uuid.UUID, callType CallType) (*CallRoom, error) {
@@ -73,11 +98,7 @@ func (s *SFU) JoinRoom(roomID, userID uuid.UUID, onTrack func(track *webrtc.Trac
 	}
 	
 	peerConnection, err := s.api.NewPeerConnection(webrtc.Configuration{
-		ICEServers: []webrtc.ICEServer{
-			{
-				URLs: []string{"stun:stun.l.google.com:19302"},
-			},
-		},
+		ICEServers: s.iceServers,
 	})
 	if err != nil {
 		return nil, err
@@ -238,6 +259,10 @@ func (s *SFU) GetStats() map[string]interface{} {
 		"total_rooms": len(s.rooms),
 		"rooms":       rooms,
 	}
+}
+
+func (s *SFU) GetICEServers() []webrtc.ICEServer {
+	return s.iceServers
 }
 
 func (s *SFU) BroadcastToRoom(roomID uuid.UUID, event string, data interface{}) error {

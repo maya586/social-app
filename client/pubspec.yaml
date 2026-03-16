@@ -23,6 +23,9 @@ dependencies:
   path_provider: ^2.1.2
   shared_preferences: ^2.2.2
   flutter_webrtc: ^0.9.48
+  record: ^5.1.2
+  just_audio: ^0.9.40
+  audio_session: ^0.1.21
 
 dev_dependencies:
   flutter_test:

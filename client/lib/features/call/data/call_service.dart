@@ -100,11 +100,23 @@ class CallService extends StateNotifier<CallState> {
     }
   }
   
+  Future<List<Map<String, dynamic>>> _getICEServers() async {
+    try {
+      final response = await ApiClient().dio.get('/calls/ice-servers');
+      final servers = response.data['ice_servers'] as List?;
+      return servers?.cast<Map<String, dynamic>>() ?? [];
+    } catch (e) {
+      return [
+        {'urls': 'stun:stun.l.google.com:19302'},
+      ];
+    }
+  }
+  
   Future<void> _initializePeerConnection() async {
-    final config = {
-      'iceServers': [
-        {'url': 'stun:stun.l.google.com:19302'},
-      ]
+    final iceServers = await _getICEServers();
+    
+    final config = <String, dynamic>{
+      'iceServers': iceServers,
     };
     
     _peerConnection = await createPeerConnection(config);

@@ -3,6 +3,8 @@ package router
 import (
 	"time"
 	"github.com/gin-gonic/gin"
+	swaggerFiles "github.com/swaggo/files"
+	ginSwagger "github.com/swaggo/gin-swagger"
 	"github.com/example/social-app/server/internal/handler"
 	"github.com/example/social-app/server/internal/middleware"
 	"github.com/example/social-app/server/internal/service"
@@ -10,7 +12,8 @@ import (
 
 func Setup(r *gin.Engine, authService *service.AuthService, authHandler *handler.AuthHandler,
 	contactHandler *handler.ContactHandler, messageHandler *handler.MessageHandler,
-	fileHandler *handler.FileHandler, callHandler *handler.CallHandler, wsHandler *handler.WSHandler) {
+	fileHandler *handler.FileHandler, callHandler *handler.CallHandler, 
+	deviceTokenHandler *handler.DeviceTokenHandler, wsHandler *handler.WSHandler) {
 	
 	r.Use(middleware.CORS())
 
@@ -68,6 +71,13 @@ func Setup(r *gin.Engine, authService *service.AuthService, authHandler *handler
 				calls.DELETE("/:room_id", callHandler.LeaveCall)
 				calls.POST("/signal", callHandler.Signal)
 				calls.GET("/stats", callHandler.GetCallStats)
+				calls.GET("/ice-servers", callHandler.GetICEServers)
+			}
+
+			devices := protected.Group("/devices")
+			{
+				devices.POST("/token", deviceTokenHandler.RegisterDeviceToken)
+				devices.DELETE("/token", deviceTokenHandler.UnregisterDeviceToken)
 			}
 		}
 	}
@@ -76,4 +86,5 @@ func Setup(r *gin.Engine, authService *service.AuthService, authHandler *handler
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{"status": "ok"})
 	})
+	r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 }
