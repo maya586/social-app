@@ -15,7 +15,7 @@ on:
       build_ios:
         description: 'Build iOS'
         required: false
-        default: false
+        default: true
         type: boolean
       build_macos:
         description: 'Build macOS'
@@ -36,6 +36,11 @@ on:
         description: 'Build Web'
         required: false
         default: true
+        type: boolean
+      build_harmony:
+        description: 'Build HarmonyOS (Experimental)'
+        required: false
+        default: false
         type: boolean
 
 env:
@@ -102,6 +107,13 @@ jobs:
           channel: 'stable'
           cache: true
 
+      - name: Create iOS platform files
+        working-directory: client
+        run: |
+          if [ ! -d "ios" ]; then
+            flutter create . --platforms ios
+          fi
+
       - name: Get dependencies
         working-directory: client
         run: flutter pub get
@@ -110,11 +122,18 @@ jobs:
         working-directory: client
         run: flutter build ios --release --no-codesign
 
+      - name: Create IPA
+        working-directory: client/build/ios/iphoneos
+        run: |
+          mkdir -p Payload
+          mv Runner.app Payload/
+          zip -r ../../../social-app-ios.ipa Payload
+
       - name: Upload iOS artifact
         uses: actions/upload-artifact@v4
         with:
           name: ios-build
-          path: client/build/ios/iphoneos/Runner.app
+          path: client/social-app-ios.ipa
 
   build-macos:
     name: Build macOS
@@ -131,6 +150,16 @@ jobs:
           channel: 'stable'
           cache: true
 
+      - name: Enable macOS desktop
+        run: flutter config --enable-macos-desktop
+
+      - name: Create macOS platform files
+        working-directory: client
+        run: |
+          if [ ! -d "macos" ]; then
+            flutter create . --platforms macos
+          fi
+
       - name: Get dependencies
         working-directory: client
         run: flutter pub get
@@ -142,16 +171,16 @@ jobs:
       - name: Create DMG
         working-directory: client/build/macos/Build/Products/Release
         run: |
-          brew install create-dmg
-          create-dmg --volname "Social App" --window-pos 200 120 --window-size 800 400 --icon-size 100 --app-drop-link 600 185 "SocialApp.dmg" "social_app.app" || true
+          brew install create-dmg || true
+          create-dmg --volname "Social App" --window-pos 200 120 --window-size 800 400 --icon-size 100 --app-drop-link 600 185 "SocialApp.dmg" "social_app.app" || zip -r SocialApp-macos.zip social_app.app
 
       - name: Upload macOS artifact
         uses: actions/upload-artifact@v4
         with:
           name: macos-build
           path: |
-            client/build/macos/Build/Products/Release/social_app.app
-            client/build/macos/Build/Products/Release/SocialApp.dmg
+            client/build/macos/Build/Products/Release/*.dmg
+            client/build/macos/Build/Products/Release/*.zip
 
   build-linux:
     name: Build Linux
@@ -259,6 +288,66 @@ jobs:
         with:
           name: web-build
           path: client/build/web-build.zip
+
+  build-harmony:
+    name: Build HarmonyOS
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.build_harmony }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter for HarmonyOS
+        run: |
+          echo "HarmonyOS build is experimental"
+          echo "Official Flutter does not support HarmonyOS yet"
+          echo "For HarmonyOS support, please use OpenHarmony Flutter:"
+          echo "https://gitee.com/openharmony-sig/flutter_flutter"
+          echo ""
+          echo "Steps to build for HarmonyOS:"
+          echo "1. Clone OpenHarmony Flutter from the above URL"
+          echo "2. Set FLUTTER_ROOT to OpenHarmony Flutter"
+          echo "3. Run: flutter build hap --release"
+
+      - name: Setup Ohos Flutter (Experimental)
+        run: |
+          git clone https://gitee.com/openharmony-sig/flutter_flutter.git /opt/flutter-ohos || true
+          export FLUTTER_ROOT=/opt/flutter-ohos
+          export PATH=$PATH:$FLUTTER_ROOT/bin
+
+      - name: Get dependencies
+        working-directory: client
+        run: |
+          if command -v flutter &> /dev/null; then
+            flutter pub get
+          else
+            echo "Flutter for HarmonyOS not available"
+          fi
+
+      - name: Build HarmonyOS HAP
+        working-directory: client
+        run: |
+          if command -v flutter &> /dev/null; then
+            flutter build hap --release || echo "HAP build not yet supported"
+          else
+            echo "Skipping HarmonyOS build - requires OpenHarmony Flutter SDK"
+            echo "Visit: https://gitee.com/openharmony-sig/samples for more info"
+            exit 0
+          fi
+
+      - name: Create placeholder
+        run: |
+          echo "HarmonyOS build requires:" > harmonyos-info.txt
+          echo "- OpenHarmony SDK" >> harmonyos-info.txt
+          echo "- OpenHarmony Flutter fork" >> harmonyos-info.txt
+          echo "" >> harmonyos-info.txt
+          echo "See: https://gitee.com/openharmony-sig/flutter_flutter" >> harmonyos-info.txt
+
+      - name: Upload HarmonyOS info
+        uses: actions/upload-artifact@v4
+        with:
+          name: harmonyos-info
+          path: harmonyos-info.txt
 
   build-server:
     name: Build Server
