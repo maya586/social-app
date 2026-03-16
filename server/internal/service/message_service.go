@@ -196,3 +196,27 @@ func (s *MessageService) GetConversation(conversationID, userID uuid.UUID) (*mod
 
 	return s.conversationRepo.FindByID(conversationID)
 }
+
+func (s *MessageService) MarkAsRead(conversationID, userID uuid.UUID) error {
+	isMember, err := s.conversationRepo.IsMember(conversationID, userID)
+	if err != nil {
+		return err
+	}
+	if !isMember {
+		return ErrNotMember
+	}
+
+	return s.messageRepo.MarkAsRead(conversationID, userID)
+}
+
+func (s *MessageService) GetUnreadCount(conversationID, userID uuid.UUID) (int64, error) {
+	isMember, err := s.conversationRepo.IsMember(conversationID, userID)
+	if err != nil {
+		return 0, err
+	}
+	if !isMember {
+		return 0, ErrNotMember
+	}
+
+	return s.messageRepo.GetUnreadCount(conversationID, userID)
+}

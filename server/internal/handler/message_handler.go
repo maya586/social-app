@@ -145,3 +145,19 @@ func (h *MessageHandler) GetConversation(c *gin.Context) {
 
 	response.Success(c, conversation)
 }
+
+func (h *MessageHandler) MarkAsRead(c *gin.Context) {
+	userID := middleware.GetUserID(c).(uuid.UUID)
+	conversationID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		response.BadRequest(c, "Invalid conversation ID")
+		return
+	}
+
+	if err := h.messageService.MarkAsRead(conversationID, userID); err != nil {
+		response.InternalError(c, "Failed to mark as read")
+		return
+	}
+
+	response.Success(c, nil)
+}

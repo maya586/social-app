@@ -39,6 +39,7 @@ func Setup(r *gin.Engine, authService *service.AuthService, authHandler *handler
 				messages.GET("/conversation/:id", messageHandler.List)
 				messages.POST("", messageHandler.Send)
 				messages.DELETE("/:id", messageHandler.Recall)
+				messages.PUT("/conversation/:id/read", messageHandler.MarkAsRead)
 			}
 
 			files := protected.Group("/files")

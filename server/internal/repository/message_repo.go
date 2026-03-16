@@ -44,3 +44,17 @@ func (r *MessageRepo) SoftDelete(id uuid.UUID) error {
 			"type":    model.MessageTypeText,
 		}).Error
 }
+
+func (r *MessageRepo) MarkAsRead(conversationID, userID uuid.UUID) error {
+	return database.DB.Model(&model.Message{}).
+		Where("conversation_id = ? AND sender_id != ?", conversationID, userID).
+		Update("status", model.MessageStatusRead).Error
+}
+
+func (r *MessageRepo) GetUnreadCount(conversationID, userID uuid.UUID) (int64, error) {
+	var count int64
+	err := database.DB.Model(&model.Message{}).
+		Where("conversation_id = ? AND sender_id != ? AND status != ?", conversationID, userID, model.MessageStatusRead).
+		Count(&count).Error
+	return count, err
+}
