@@ -41,7 +41,7 @@ Widget buildRouter(WidgetRef ref) {
     case '/contacts':
       return const ContactsPage();
     case '/profile':
-      return const ProfilePage();
+      return const ProfileTabPage();
     default:
       return const LoginPage();
   }

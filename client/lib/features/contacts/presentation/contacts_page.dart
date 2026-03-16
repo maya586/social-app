@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../core/router/app_router.dart';
 import '../data/contacts_repository.dart';
 import '../domain/contact.dart';
+import '../../chat/data/chat_repository.dart';
+import '../../chat/data/chat_provider.dart';
 
 final contactsRepositoryProvider = Provider((ref) => ContactsRepository());
 
@@ -35,9 +38,7 @@ class _ContactsPageState extends ConsumerState<ContactsPage> {
         actions: [
           IconButton(
             icon: const Icon(Icons.person_add),
-            onPressed: () {
-              _showAddContactDialog();
-            },
+            onPressed: () => _showAddContactDialog(),
           ),
         ],
       ),
@@ -48,14 +49,16 @@ class _ContactsPageState extends ConsumerState<ContactsPage> {
             child: TextField(
               controller: _searchController,
               decoration: InputDecoration(
-                hintText: '搜索联系人',
+                hintText: '搜索联系人或手机号',
                 prefixIcon: const Icon(Icons.search),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(24),
                 ),
               ),
-              onChanged: (value) {
-                // TODO: Implement search
+              onSubmitted: (value) {
+                if (value.isNotEmpty) {
+                  _searchUserByPhone(value);
+                }
               },
             ),
           ),
@@ -63,7 +66,7 @@ class _ContactsPageState extends ConsumerState<ContactsPage> {
             child: contactsAsync.when(
               data: (contacts) {
                 if (contacts.isEmpty) {
-                  return const Center(child: Text('暂无联系人'));
+                  return const Center(child: Text('暂无联系人\n点击右上角添加', textAlign: TextAlign.center));
                 }
                 return ListView.builder(
                   itemCount: contacts.length,
@@ -81,6 +84,72 @@ class _ContactsPageState extends ConsumerState<ContactsPage> {
     );
   }
   
+  void _searchUserByPhone(String phone) async {
+    try {
+      final user = await ref.read(contactsRepositoryProvider).searchUserByPhone(phone);
+      if (mounted) {
+        _showSearchResultDialog(user);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('未找到用户: $e')),
+        );
+      }
+    }
+  }
+  
+  void _showSearchResultDialog(Map<String, dynamic> user) {
+    final String contactId = user['id'].toString();
+    
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('找到用户'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('昵称: ${user['nickname'] ?? '未设置'}'),
+            Text('手机: ${user['phone'] ?? ''}'),
+            Text('ID: ${contactId.substring(0, 8)}...'),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('取消'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.pop(context);
+              await _addContact(contactId);
+            },
+            child: const Text('添加好友'),
+          ),
+        ],
+      ),
+    );
+  }
+  
+  Future<void> _addContact(String contactId) async {
+    try {
+      await ref.read(contactsRepositoryProvider).addContact(contactId);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('好友请求已发送')),
+        );
+        ref.invalidate(contactsProvider);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('添加失败: $e')),
+        );
+      }
+    }
+  }
+  
   void _showAddContactDialog() {
     final controller = TextEditingController();
     
@@ -89,12 +158,18 @@ class _ContactsPageState extends ConsumerState<ContactsPage> {
       builder: (context) {
         return AlertDialog(
           title: const Text('添加联系人'),
-          content: TextField(
-            controller: controller,
-            decoration: const InputDecoration(
-              labelText: '用户ID',
-              hintText: '输入要添加的用户ID',
-            ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: controller,
+                decoration: const InputDecoration(
+                  labelText: '手机号',
+                  hintText: '输入对方手机号搜索',
+                ),
+                keyboardType: TextInputType.phone,
+              ),
+            ],
           ),
           actions: [
             TextButton(
@@ -103,26 +178,13 @@ class _ContactsPageState extends ConsumerState<ContactsPage> {
             ),
             ElevatedButton(
               onPressed: () async {
-                final contactId = controller.text.trim();
-                if (contactId.isNotEmpty) {
-                  try {
-                    await ref.read(contactsRepositoryProvider).addContact(contactId);
-                    if (mounted) {
-                      Navigator.pop(context);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('好友请求已发送')),
-                      );
-                    }
-                  } catch (e) {
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('添加失败: $e')),
-                      );
-                    }
-                  }
+                final phone = controller.text.trim();
+                if (phone.isNotEmpty) {
+                  Navigator.pop(context);
+                  _searchUserByPhone(phone);
                 }
               },
-              child: const Text('添加'),
+              child: const Text('搜索'),
             ),
           ],
         );
@@ -131,23 +193,47 @@ class _ContactsPageState extends ConsumerState<ContactsPage> {
   }
 }
 
-class _ContactTile extends StatelessWidget {
+class _ContactTile extends ConsumerWidget {
   final Contact contact;
   
   const _ContactTile({required this.contact});
   
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final displayName = contact.getDisplayName();
+    final subtitle = contact.contactUser?.phone ?? contact.contactId.substring(0, 8);
+    
     return ListTile(
       leading: CircleAvatar(
-        child: Text(contact.remark ?? contact.contactId.substring(0, 2)),
+        child: Text(displayName.isNotEmpty ? displayName.substring(0, 1) : '?'),
       ),
-      title: Text(contact.remark ?? contact.contactId),
-      subtitle: Text(_getStatusText(contact.status)),
+      title: Text(displayName),
+      subtitle: Text('$subtitle · ${_getStatusText(contact.status)}'),
+      trailing: contact.status == 'accepted' 
+          ? IconButton(
+              icon: const Icon(Icons.chat),
+              onPressed: () => _startChat(context, ref),
+            )
+          : null,
       onTap: () {
-        // TODO: Navigate to chat
+        if (contact.status == 'accepted') {
+          _startChat(context, ref);
+        }
       },
     );
+  }
+  
+  Future<void> _startChat(BuildContext context, WidgetRef ref) async {
+    try {
+      final chatRepo = ref.read(chatRepositoryProvider);
+      final conversation = await chatRepo.createPrivateConversation(contact.contactId);
+      ref.read(routerProvider.notifier).goChat(conversation.id);
+      ref.invalidate(conversationsProvider);
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('创建会话失败: $e')),
+      );
+    }
   }
   
   String _getStatusText(String status) {

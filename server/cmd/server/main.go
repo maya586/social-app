@@ -1,9 +1,9 @@
 package main
 
 import (
-	"log"
 	"github.com/gin-gonic/gin"
-	
+	"log"
+
 	_ "github.com/example/social-app/server/docs"
 	"github.com/example/social-app/server/internal/cache"
 	"github.com/example/social-app/server/internal/config"
@@ -37,11 +37,11 @@ import (
 // @description Type "Bearer" followed by a space and JWT token.
 func main() {
 	cfg := config.Load()
-	
+
 	if err := database.Connect(&cfg.Database); err != nil {
 		log.Fatal("Failed to connect to database:", err)
 	}
-	
+
 	if err := database.Migrate(); err != nil {
 		log.Fatal("Failed to migrate database:", err)
 	}
@@ -73,12 +73,12 @@ func main() {
 	messageHandler := handler.NewMessageHandler(messageService)
 	fileHandler := handler.NewFileHandler()
 	callHandler := handler.NewCallHandler(hub)
-	deviceTokenHandler := handler.NewDeviceTokenHandler()
+	userHandler := handler.NewUserHandler(userRepo)
 	wsHandler := handler.NewWSHandler(hub)
-	
+
 	r := gin.Default()
-	router.Setup(r, authService, authHandler, contactHandler, messageHandler, fileHandler, callHandler, deviceTokenHandler, wsHandler)
-	
+	router.Setup(r, authService, authHandler, contactHandler, messageHandler, fileHandler, callHandler, userHandler, wsHandler)
+
 	log.Printf("Server starting on port %s", cfg.Server.Port)
 	if err := r.Run(":" + cfg.Server.Port); err != nil {
 		log.Fatal("Failed to start server:", err)

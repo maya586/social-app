@@ -13,6 +13,11 @@ class ChatRepository {
     
     final response = await _api.get(url);
     final data = response.data['data'] ?? response.data;
+    
+    if (data is List) {
+      return data.map((json) => Conversation.fromJson(json)).toList();
+    }
+    
     final List<dynamic> conversations = data['conversations'] ?? [];
     return conversations.map((json) => Conversation.fromJson(json)).toList();
   }
@@ -25,6 +30,11 @@ class ChatRepository {
     
     final response = await _api.get(url);
     final data = response.data['data'] ?? response.data;
+    
+    if (data is List) {
+      return data.map((json) => Message.fromJson(json)).toList();
+    }
+    
     final List<dynamic> messages = data['messages'] ?? [];
     return messages.map((json) => Message.fromJson(json)).toList();
   }

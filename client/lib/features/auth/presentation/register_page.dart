@@ -29,15 +29,29 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
   Future<void> _register() async {
     if (!_formKey.currentState!.validate()) return;
     
-    await ref.read(authStateProvider.notifier).register(
-      phone: _phoneController.text,
-      password: _passwordController.text,
-      nickname: _nicknameController.text,
-    );
-    
-    final state = ref.read(authStateProvider);
-    if (state.hasValue && state.value != null) {
-      ref.read(routerProvider.notifier).goHome();
+    try {
+      await ref.read(authStateProvider.notifier).register(
+        phone: _phoneController.text,
+        password: _passwordController.text,
+        nickname: _nicknameController.text,
+      );
+      
+      final state = ref.read(authStateProvider);
+      if (state.hasValue && state.value != null) {
+        ref.read(routerProvider.notifier).goHome();
+      }
+    } catch (e) {
+      if (mounted) {
+        String errorMsg = '注册失败';
+        if (e.toString().contains('USER_PHONE_EXISTS')) {
+          errorMsg = '手机号已注册';
+        } else if (e.toString().contains('BAD_REQUEST')) {
+          errorMsg = '请求参数错误';
+        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(errorMsg)),
+        );
+      }
     }
   }
   

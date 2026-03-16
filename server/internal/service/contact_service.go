@@ -2,9 +2,9 @@ package service
 
 import (
 	"errors"
-	"github.com/google/uuid"
 	"github.com/example/social-app/server/internal/model"
 	"github.com/example/social-app/server/internal/repository"
+	"github.com/google/uuid"
 )
 
 var (
@@ -36,7 +36,7 @@ type ContactResponse struct {
 	ContactID uuid.UUID   `json:"contact_id"`
 	Remark    string      `json:"remark"`
 	Status    string      `json:"status"`
-	User      *model.User `json:"user"`
+	User      *model.User `json:"contact_user"`
 }
 
 func (s *ContactService) AddContact(userID uuid.UUID, input *AddContactInput) (*model.Contact, error) {
@@ -99,6 +99,7 @@ func (s *ContactService) GetContacts(userID uuid.UUID, limit, offset int) ([]Con
 			ContactID: c.ContactID,
 			Remark:    c.Remark,
 			Status:    string(c.Status),
+			User:      c.ContactUser,
 		}
 		result = append(result, resp)
 	}

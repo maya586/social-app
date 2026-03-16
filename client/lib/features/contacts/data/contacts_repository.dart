@@ -11,6 +11,12 @@ class ContactsRepository {
     return contacts.map((json) => Contact.fromJson(json)).toList();
   }
   
+  Future<Map<String, dynamic>> searchUserByPhone(String phone) async {
+    final response = await _api.get('/users/search', queryParameters: {'phone': phone});
+    final data = response.data['data'] ?? response.data;
+    return Map<String, dynamic>.from(data);
+  }
+  
   Future<void> addContact(String contactId, {String? remark}) async {
     await _api.post('/contacts/request', data: {
       'contact_id': contactId,

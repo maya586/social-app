@@ -5,6 +5,8 @@ import '../../../core/network/websocket_service.dart';
 import '../data/chat_provider.dart';
 import '../domain/conversation.dart';
 import '../../auth/data/auth_provider.dart';
+import '../../contacts/presentation/contacts_page.dart';
+import '../../profile/presentation/profile_page.dart';
 
 class ConversationListPage extends ConsumerStatefulWidget {
   const ConversationListPage({super.key});
@@ -29,8 +31,8 @@ class _ConversationListPageState extends ConsumerState<ConversationListPage> {
         index: _currentIndex,
         children: const [
           _ConversationList(),
-          _ContactsTab(),
-          _ProfileTab(),
+          ContactsPage(),
+          ProfileTabPage(),
         ],
       ),
       bottomNavigationBar: NavigationBar(
@@ -121,51 +123,6 @@ class _ConversationTile extends ConsumerWidget {
       onTap: () {
         ref.read(routerProvider.notifier).goChat(conversation.id);
       },
-    );
-  }
-}
-
-class _ContactsTab extends ConsumerWidget {
-  const _ContactsTab();
-  
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('联系人')),
-      body: const Center(child: Text('联系人列表')),
-    );
-  }
-}
-
-class _ProfileTab extends ConsumerWidget {
-  const _ProfileTab();
-  
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('我')),
-      body: ListView(
-        children: [
-          ListTile(
-            leading: const CircleAvatar(child: Icon(Icons.person)),
-            title: const Text('个人信息'),
-            onTap: () {},
-          ),
-          ListTile(
-            leading: const Icon(Icons.settings),
-            title: const Text('设置'),
-            onTap: () {},
-          ),
-          ListTile(
-            leading: const Icon(Icons.logout),
-            title: const Text('退出登录'),
-            onTap: () async {
-              await ref.read(authStateProvider.notifier).logout();
-              ref.read(routerProvider.notifier).goLogin();
-            },
-          ),
-        ],
-      ),
     );
   }
 }

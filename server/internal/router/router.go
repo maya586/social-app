@@ -1,20 +1,20 @@
 package router
 
 import (
-	"time"
-	"github.com/gin-gonic/gin"
-	swaggerFiles "github.com/swaggo/files"
-	ginSwagger "github.com/swaggo/gin-swagger"
 	"github.com/example/social-app/server/internal/handler"
 	"github.com/example/social-app/server/internal/middleware"
 	"github.com/example/social-app/server/internal/service"
+	"github.com/gin-gonic/gin"
+	swaggerFiles "github.com/swaggo/files"
+	ginSwagger "github.com/swaggo/gin-swagger"
+	"time"
 )
 
 func Setup(r *gin.Engine, authService *service.AuthService, authHandler *handler.AuthHandler,
 	contactHandler *handler.ContactHandler, messageHandler *handler.MessageHandler,
-	fileHandler *handler.FileHandler, callHandler *handler.CallHandler, 
-	deviceTokenHandler *handler.DeviceTokenHandler, wsHandler *handler.WSHandler) {
-	
+	fileHandler *handler.FileHandler, callHandler *handler.CallHandler,
+	userHandler *handler.UserHandler, wsHandler *handler.WSHandler) {
+
 	r.Use(middleware.CORS())
 
 	api := r.Group("/api/v1")
@@ -74,10 +74,11 @@ func Setup(r *gin.Engine, authService *service.AuthService, authHandler *handler
 				calls.GET("/ice-servers", callHandler.GetICEServers)
 			}
 
-			devices := protected.Group("/devices")
+			users := protected.Group("/users")
 			{
-				devices.POST("/token", deviceTokenHandler.RegisterDeviceToken)
-				devices.DELETE("/token", deviceTokenHandler.UnregisterDeviceToken)
+				users.GET("/search", userHandler.SearchUser)
+				users.GET("/me", userHandler.GetProfile)
+				users.PUT("/me", userHandler.UpdateProfile)
 			}
 		}
 	}
