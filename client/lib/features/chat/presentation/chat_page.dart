@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:image_picker/image_picker.dart';
+import 'dart:io';
 import '../data/chat_provider.dart';
 import '../domain/message.dart';
+import '../../../core/network/api_client.dart';
 
 class ChatPage extends ConsumerStatefulWidget {
   final String conversationId;
@@ -16,12 +19,94 @@ class ChatPage extends ConsumerStatefulWidget {
 class _ChatPageState extends ConsumerState<ChatPage> {
   final _messageController = TextEditingController();
   final _scrollController = ScrollController();
+  final _imagePicker = ImagePicker();
+  bool _isUploading = false;
   
   @override
   void dispose() {
     _messageController.dispose();
     _scrollController.dispose();
     super.dispose();
+  }
+  
+  Future<void> _pickAndSendImage() async {
+    final XFile? image = await _imagePicker.pickImage(
+      source: ImageSource.gallery,
+      maxWidth: 1024,
+      maxHeight: 1024,
+      imageQuality: 85,
+    );
+    
+    if (image == null) return;
+    
+    setState(() => _isUploading = true);
+    
+    try {
+      final formData = FormData.fromMap({
+        'file': await MultipartFile.fromFile(image.path),
+        'type': 'image',
+      });
+      
+      final response = await ApiClient().dio.post('/files/upload', data: formData);
+      final url = response.data['url'];
+      
+      ref.read(messagesProvider(widget.conversationId).notifier).sendMessage(
+        type: 'image',
+        mediaUrl: url,
+      );
+      
+      _scrollToBottom();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('上传失败: $e')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isUploading = false);
+      }
+    }
+  }
+  
+  Future<void> _takeAndSendPhoto() async {
+    final XFile? photo = await _imagePicker.pickImage(
+      source: ImageSource.camera,
+      maxWidth: 1024,
+      maxHeight: 1024,
+      imageQuality: 85,
+    );
+    
+    if (photo == null) return;
+    
+    setState(() => _isUploading = true);
+    
+    try {
+      final formData = FormData.fromMap({
+        'file': await MultipartFile.fromFile(photo.path),
+        'type': 'image',
+      });
+      
+      final response = await ApiClient().dio.post('/files/upload', data: formData);
+      final url = response.data['url'];
+      
+      ref.read(messagesProvider(widget.conversationId).notifier).sendMessage(
+        type: 'image',
+        mediaUrl: url,
+      );
+      
+      _scrollToBottom();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('上传失败: $e')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isUploading = false);
+      }
+    }
   }
   
   void _sendMessage() {
@@ -106,6 +191,36 @@ class _ChatPageState extends ConsumerState<ChatPage> {
               child: Row(
                 children: [
                   IconButton(
+                    icon: const Icon(Icons.add),
+                    onPressed: _isUploading ? null : () {
+                      showModalBottomSheet(
+                        context: context,
+                        builder: (context) => SafeArea(
+                          child: Wrap(
+                            children: [
+                              ListTile(
+                                leading: const Icon(Icons.photo_library),
+                                title: const Text('从相册选择'),
+                                onTap: () {
+                                  Navigator.pop(context);
+                                  _pickAndSendImage();
+                                },
+                              ),
+                              ListTile(
+                                leading: const Icon(Icons.camera_alt),
+                                title: const Text('拍照'),
+                                onTap: () {
+                                  Navigator.pop(context);
+                                  _takeAndSendPhoto();
+                                },
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                  IconButton(
                     icon: const Icon(Icons.mic),
                     onPressed: () {
                       // TODO: Implement voice message
@@ -128,14 +243,8 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                     ),
                   ),
                   IconButton(
-                    icon: const Icon(Icons.emoji_emotions),
-                    onPressed: () {
-                      // TODO: Implement emoji picker
-                    },
-                  ),
-                  IconButton(
                     icon: const Icon(Icons.send),
-                    onPressed: _sendMessage,
+                    onPressed: _isUploading ? null : _sendMessage,
                   ),
                 ],
               ),
@@ -177,11 +286,38 @@ class _MessageBubble extends StatelessWidget {
                 ),
               )
             else if (message.type == 'image')
-              Container(
-                width: 150,
-                height: 150,
-                color: Colors.grey[300],
-                child: const Icon(Icons.image),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: message.mediaUrl != null
+                    ? Image.network(
+                        'http://localhost:8080/api/v1${message.mediaUrl}',
+                        width: 200,
+                        height: 200,
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) {
+                          return Container(
+                            width: 200,
+                            height: 200,
+                            color: Colors.grey[300],
+                            child: const Icon(Icons.broken_image, size: 50),
+                          );
+                        },
+                        loadingBuilder: (context, child, loadingProgress) {
+                          if (loadingProgress == null) return child;
+                          return Container(
+                            width: 200,
+                            height: 200,
+                            color: Colors.grey[200],
+                            child: const Center(child: CircularProgressIndicator()),
+                          );
+                        },
+                      )
+                    : Container(
+                        width: 150,
+                        height: 150,
+                        color: Colors.grey[300],
+                        child: const Icon(Icons.image),
+                      ),
               )
             else if (message.type == 'voice')
               Row(
