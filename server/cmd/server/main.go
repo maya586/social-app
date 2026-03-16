@@ -10,6 +10,7 @@ import (
 	"github.com/example/social-app/server/internal/repository"
 	"github.com/example/social-app/server/internal/router"
 	"github.com/example/social-app/server/internal/service"
+	"github.com/example/social-app/server/internal/storage"
 	"github.com/example/social-app/server/internal/websocket"
 )
 
@@ -28,6 +29,10 @@ func main() {
 		log.Fatal("Failed to connect to redis:", err)
 	}
 
+	if err := storage.InitMinio(&cfg.Minio); err != nil {
+		log.Println("Warning: Failed to connect to MinIO:", err)
+	}
+
 	userRepo := repository.NewUserRepo()
 	contactRepo := repository.NewContactRepo()
 	conversationRepo := repository.NewConversationRepo()
@@ -40,13 +45,14 @@ func main() {
 	authHandler := handler.NewAuthHandler(authService)
 	contactHandler := handler.NewContactHandler(contactService)
 	messageHandler := handler.NewMessageHandler(messageService)
+	fileHandler := handler.NewFileHandler()
 
 	hub := websocket.NewHub()
 	go hub.Run()
 	wsHandler := handler.NewWSHandler(hub)
 	
 	r := gin.Default()
-	router.Setup(r, authService, authHandler, contactHandler, messageHandler, wsHandler)
+	router.Setup(r, authService, authHandler, contactHandler, messageHandler, fileHandler, wsHandler)
 	
 	log.Printf("Server starting on port %s", cfg.Server.Port)
 	if err := r.Run(":" + cfg.Server.Port); err != nil {

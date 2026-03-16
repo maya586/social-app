@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"strconv"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/example/social-app/server/internal/middleware"
@@ -90,4 +91,57 @@ func (h *MessageHandler) Recall(c *gin.Context) {
 	}
 
 	response.Success(c, nil)
+}
+
+func (h *MessageHandler) ListConversations(c *gin.Context) {
+	userID := middleware.GetUserID(c).(uuid.UUID)
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
+	offset, _ := strconv.Atoi(c.DefaultQuery("offset", "0"))
+
+	conversations, err := h.messageService.ListConversations(userID, limit, offset)
+	if err != nil {
+		response.InternalError(c, "Failed to get conversations")
+		return
+	}
+
+	response.Success(c, conversations)
+}
+
+func (h *MessageHandler) CreateConversation(c *gin.Context) {
+	userID := middleware.GetUserID(c).(uuid.UUID)
+	var input struct {
+		Type      model.ConversationType `json:"type" binding:"required"`
+		Name      string                 `json:"name"`
+		MemberIDs []uuid.UUID            `json:"member_ids"`
+		ContactID uuid.UUID              `json:"contact_id"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		response.BadRequest(c, "Invalid request")
+		return
+	}
+
+	conversation, err := h.messageService.CreateConversation(userID, input.Type, input.Name, input.MemberIDs, input.ContactID)
+	if err != nil {
+		response.InternalError(c, "Failed to create conversation")
+		return
+	}
+
+	response.Created(c, conversation)
+}
+
+func (h *MessageHandler) GetConversation(c *gin.Context) {
+	userID := middleware.GetUserID(c).(uuid.UUID)
+	conversationID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		response.BadRequest(c, "Invalid conversation ID")
+		return
+	}
+
+	conversation, err := h.messageService.GetConversation(conversationID, userID)
+	if err != nil {
+		response.NotFound(c, "Conversation not found")
+		return
+	}
+
+	response.Success(c, conversation)
 }

@@ -119,3 +119,80 @@ func (s *MessageService) Recall(messageID, userID uuid.UUID) error {
 
 	return s.messageRepo.SoftDelete(messageID)
 }
+
+func (s *MessageService) ListConversations(userID uuid.UUID, limit, offset int) ([]model.Conversation, error) {
+	return s.conversationRepo.ListByUserID(userID, limit, offset)
+}
+
+func (s *MessageService) CreateConversation(userID uuid.UUID, convType model.ConversationType, name string, memberIDs []uuid.UUID, contactID uuid.UUID) (*model.Conversation, error) {
+	if convType == model.ConversationTypePrivate && contactID != uuid.Nil {
+		existing, err := s.conversationRepo.FindPrivateConversation(userID, contactID)
+		if err == nil {
+			return existing, nil
+		}
+
+		conversation := &model.Conversation{
+			Type:    convType,
+			OwnerID: userID,
+		}
+		if err := s.conversationRepo.Create(conversation); err != nil {
+			return nil, err
+		}
+
+		now := time.Now()
+		s.conversationRepo.AddMember(&model.ConversationMember{
+			UserID:         userID,
+			ConversationID: conversation.ID,
+			Role:           model.MemberRoleOwner,
+			JoinedAt:       now,
+		})
+		s.conversationRepo.AddMember(&model.ConversationMember{
+			UserID:         contactID,
+			ConversationID: conversation.ID,
+			Role:           model.MemberRoleMember,
+			JoinedAt:       now,
+		})
+
+		return conversation, nil
+	}
+
+	conversation := &model.Conversation{
+		Type:    convType,
+		Name:    name,
+		OwnerID: userID,
+	}
+	if err := s.conversationRepo.Create(conversation); err != nil {
+		return nil, err
+	}
+
+	now := time.Now()
+	s.conversationRepo.AddMember(&model.ConversationMember{
+		UserID:         userID,
+		ConversationID: conversation.ID,
+		Role:           model.MemberRoleOwner,
+		JoinedAt:       now,
+	})
+
+	for _, memberID := range memberIDs {
+		s.conversationRepo.AddMember(&model.ConversationMember{
+			UserID:         memberID,
+			ConversationID: conversation.ID,
+			Role:           model.MemberRoleMember,
+			JoinedAt:       now,
+		})
+	}
+
+	return conversation, nil
+}
+
+func (s *MessageService) GetConversation(conversationID, userID uuid.UUID) (*model.Conversation, error) {
+	isMember, err := s.conversationRepo.IsMember(conversationID, userID)
+	if err != nil {
+		return nil, err
+	}
+	if !isMember {
+		return nil, ErrNotMember
+	}
+
+	return s.conversationRepo.FindByID(conversationID)
+}

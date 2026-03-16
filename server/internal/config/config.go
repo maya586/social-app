@@ -10,6 +10,7 @@ type Config struct {
 	Database DatabaseConfig
 	Redis    RedisConfig
 	JWT      JWTConfig
+	Minio    MinioConfig
 }
 
 type ServerConfig struct {
@@ -38,6 +39,14 @@ type JWTConfig struct {
 	ExpireTime time.Duration
 }
 
+type MinioConfig struct {
+	Endpoint  string
+	AccessKey string
+	SecretKey string
+	Bucket    string
+	UseSSL    bool
+}
+
 func Load() *Config {
 	return &Config{
 		Server: ServerConfig{
@@ -61,6 +70,13 @@ func Load() *Config {
 		JWT: JWTConfig{
 			Secret:     getEnv("JWT_SECRET", "your-secret-key-change-in-production"),
 			ExpireTime: 2 * time.Hour,
+		},
+		Minio: MinioConfig{
+			Endpoint:  getEnv("MINIO_ENDPOINT", "localhost:9000"),
+			AccessKey: getEnv("MINIO_ACCESS_KEY", "minioadmin"),
+			SecretKey: getEnv("MINIO_SECRET_KEY", "minioadmin"),
+			Bucket:    getEnv("MINIO_BUCKET", "social-app"),
+			UseSSL:    getEnv("MINIO_USE_SSL", "false") == "true",
 		},
 	}
 }

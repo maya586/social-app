@@ -9,7 +9,7 @@ import (
 
 func Setup(r *gin.Engine, authService *service.AuthService, authHandler *handler.AuthHandler,
 	contactHandler *handler.ContactHandler, messageHandler *handler.MessageHandler,
-	wsHandler *handler.WSHandler) {
+	fileHandler *handler.FileHandler, wsHandler *handler.WSHandler) {
 	
 	r.Use(middleware.CORS())
 
@@ -39,6 +39,20 @@ func Setup(r *gin.Engine, authService *service.AuthService, authHandler *handler
 				messages.GET("/conversation/:id", messageHandler.List)
 				messages.POST("", messageHandler.Send)
 				messages.DELETE("/:id", messageHandler.Recall)
+			}
+
+			files := protected.Group("/files")
+			{
+				files.POST("/upload", fileHandler.Upload)
+				files.GET("/:id", fileHandler.Download)
+				files.DELETE("/:id", fileHandler.Delete)
+			}
+
+			conversations := protected.Group("/conversations")
+			{
+				conversations.GET("", messageHandler.ListConversations)
+				conversations.POST("", messageHandler.CreateConversation)
+				conversations.GET("/:id", messageHandler.GetConversation)
 			}
 		}
 	}
