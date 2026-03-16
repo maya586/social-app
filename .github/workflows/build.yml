@@ -39,7 +39,7 @@ on:
         type: boolean
 
 env:
-  FLUTTER_VERSION: '3.24.0'
+  FLUTTER_VERSION: '3.24.5'
 
 jobs:
   build-android:
