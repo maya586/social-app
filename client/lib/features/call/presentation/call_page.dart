@@ -24,6 +24,7 @@ class CallPage extends ConsumerStatefulWidget {
 class _CallPageState extends ConsumerState<CallPage> {
   Timer? _durationTimer;
   Duration _duration = Duration.zero;
+  bool _showParticipants = false;
   
   @override
   void initState() {
@@ -84,6 +85,7 @@ class _CallPageState extends ConsumerState<CallPage> {
               _buildVideoView(callState),
               _buildControls(callState, callService),
               _buildTopBar(callState),
+              _buildParticipantsPanel(callState),
             ],
           ),
         ),
@@ -93,50 +95,66 @@ class _CallPageState extends ConsumerState<CallPage> {
   
   Widget _buildVideoView(CallState callState) {
     if (callState.callType == CallType.audio) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              width: 120,
-              height: 120,
-              decoration: BoxDecoration(
-                color: Theme.of(context).primaryColor,
-                shape: BoxShape.circle,
-              ),
-              child: Center(
-                child: Text(
-                  widget.callerName?.substring(0, 1).toUpperCase() ?? '?',
-                  style: const TextStyle(
-                    fontSize: 48,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                  ),
+      return _buildAudioCallView(callState);
+    }
+    
+    final remoteCount = callState.remoteStreams.length;
+    
+    if (remoteCount <= 1) {
+      return _buildOneOnOneVideoView(callState);
+    }
+    
+    return _buildGroupVideoView(callState);
+  }
+  
+  Widget _buildAudioCallView(CallState callState) {
+    final participantCount = callState.remoteStreams.length + 1;
+    
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            width: 120,
+            height: 120,
+            decoration: BoxDecoration(
+              color: Theme.of(context).primaryColor,
+              shape: BoxShape.circle,
+            ),
+            child: Center(
+              child: Text(
+                widget.callerName?.substring(0, 1).toUpperCase() ?? '?',
+                style: const TextStyle(
+                  fontSize: 48,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
                 ),
               ),
             ),
-            const SizedBox(height: 24),
-            Text(
-              widget.callerName ?? '通话中',
-              style: const TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.w500,
-                color: Colors.white,
-              ),
+          ),
+          const SizedBox(height: 24),
+          Text(
+            widget.callerName ?? '通话中',
+            style: const TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.w500,
+              color: Colors.white,
             ),
-            const SizedBox(height: 8),
-            Text(
-              _formatDuration(_duration),
-              style: const TextStyle(
-                fontSize: 16,
-                color: Colors.white70,
-              ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '$participantCount 人通话 · ${_formatDuration(_duration)}',
+            style: const TextStyle(
+              fontSize: 16,
+              color: Colors.white70,
             ),
-          ],
-        ),
-      );
-    }
-    
+          ),
+        ],
+      ),
+    );
+  }
+  
+  Widget _buildOneOnOneVideoView(CallState callState) {
     return Stack(
       children: [
         if (callState.remoteStreams.isNotEmpty)
@@ -167,6 +185,70 @@ class _CallPageState extends ConsumerState<CallPage> {
               ),
             ),
           ),
+      ],
+    );
+  }
+  
+  Widget _buildGroupVideoView(CallState callState) {
+    final allStreams = <MediaStream?>[
+      callState.localStream,
+      ...callState.remoteStreams,
+    ];
+    
+    return Column(
+      children: [
+        Expanded(
+          child: GridView.builder(
+            padding: const EdgeInsets.all(8),
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: allStreams.length > 4 ? 3 : 2,
+              mainAxisSpacing: 8,
+              crossAxisSpacing: 8,
+              childAspectRatio: 0.75,
+            ),
+            itemCount: allStreams.length,
+            itemBuilder: (context, index) {
+              final stream = allStreams[index];
+              final isLocal = index == 0;
+              
+              return Container(
+                decoration: BoxDecoration(
+                  color: Colors.grey[900],
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: stream != null
+                      ? RTCVideoView(
+                          RTCVideoRenderer()..srcObject = stream,
+                          mirror: isLocal,
+                          objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
+                        )
+                      : Center(
+                          child: Container(
+                            width: 60,
+                            height: 60,
+                            decoration: BoxDecoration(
+                              color: Theme.of(context).primaryColor,
+                              shape: BoxShape.circle,
+                            ),
+                            child: Center(
+                              child: Text(
+                                isLocal ? '我' : '?',
+                                style: const TextStyle(
+                                  fontSize: 24,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                ),
+              );
+            },
+          ),
+        ),
       ],
     );
   }
@@ -278,6 +360,36 @@ class _CallPageState extends ConsumerState<CallPage> {
           ),
         ),
       ],
+    );
+  }
+  
+  Widget _buildParticipantsPanel(CallState callState) {
+    final participantCount = callState.remoteStreams.length + 1;
+    
+    return Positioned(
+      bottom: 120,
+      right: 16,
+      child: GestureDetector(
+        onTap: () => setState(() => _showParticipants = !_showParticipants),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: Colors.black54,
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.people, color: Colors.white, size: 20),
+              const SizedBox(width: 8),
+              Text(
+                '$participantCount',
+                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

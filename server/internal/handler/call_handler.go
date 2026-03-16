@@ -6,14 +6,22 @@ import (
 	"github.com/google/uuid"
 	pionwebrtc "github.com/pion/webrtc/v3"
 	"github.com/example/social-app/server/internal/middleware"
+	"github.com/example/social-app/server/internal/repository"
 	"github.com/example/social-app/server/internal/webrtc"
+	"github.com/example/social-app/server/internal/websocket"
 	"github.com/example/social-app/server/pkg/response"
 )
 
-type CallHandler struct{}
+type CallHandler struct {
+	hub            *websocket.Hub
+	conversationRepo *repository.ConversationRepo
+}
 
-func NewCallHandler() *CallHandler {
-	return &CallHandler{}
+func NewCallHandler(hub *websocket.Hub) *CallHandler {
+	return &CallHandler{
+		hub:            hub,
+		conversationRepo: repository.NewConversationRepo(),
+	}
 }
 
 type CreateCallInput struct {
@@ -63,6 +71,25 @@ func (h *CallHandler) CreateCall(c *gin.Context) {
 	if err != nil {
 		response.InternalError(c, "Failed to join call room")
 		return
+	}
+	
+	members, err := h.conversationRepo.GetMembers(input.ConversationID)
+	if err == nil {
+		notification, _ := json.Marshal(map[string]interface{}{
+			"event": "call:incoming",
+			"data": map[string]interface{}{
+				"room_id":         room.ID.String(),
+				"conversation_id": room.ConversationID.String(),
+				"caller_id":       userID.String(),
+				"type":            room.CallType,
+			},
+		})
+		
+		for _, member := range members {
+			if member.UserID != userID {
+				h.hub.SendToUser(member.UserID, notification)
+			}
+		}
 	}
 	
 	response.Created(c, gin.H{

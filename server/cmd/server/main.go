@@ -45,14 +45,14 @@ func main() {
 	contactService := service.NewContactService(contactRepo, userRepo)
 	messageService := service.NewMessageService(messageRepo, conversationRepo)
 
+	hub := websocket.NewHub()
+	go hub.Run()
+
 	authHandler := handler.NewAuthHandler(authService)
 	contactHandler := handler.NewContactHandler(contactService)
 	messageHandler := handler.NewMessageHandler(messageService)
 	fileHandler := handler.NewFileHandler()
-	callHandler := handler.NewCallHandler()
-
-	hub := websocket.NewHub()
-	go hub.Run()
+	callHandler := handler.NewCallHandler(hub)
 	wsHandler := handler.NewWSHandler(hub)
 	
 	r := gin.Default()
