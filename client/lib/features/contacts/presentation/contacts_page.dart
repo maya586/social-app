@@ -336,7 +336,7 @@ class _PendingRequestTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final displayName = contact.getDisplayName();
-    final subtitle = contact.contactUser?.phone ?? contact.userId.substring(0, 8);
+    final subtitle = contact.contactUser?.phone ?? contact.userId?.substring(0, 8) ?? '未知';
     
     return ListTile(
       leading: CircleAvatar(
