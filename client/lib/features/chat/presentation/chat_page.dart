@@ -166,7 +166,7 @@ title: const Text('聊天'),
             child: messagesAsync.when(
               data: (messages) {
                 if (messages.isEmpty) {
-                  return const Center(child: Text('暂无消息'));
+                  return const Center(child: Text('暂无消息\n发送一条消息开始聊天', textAlign: TextAlign.center));
                 }
                 WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
                 return ListView.builder(
@@ -179,7 +179,21 @@ title: const Text('聊天'),
                 );
               },
               loading: () => const Center(child: CircularProgressIndicator()),
-              error: (error, stack) => Center(child: Text('加载失败: $error')),
+              error: (error, stack) => Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.error_outline, size: 48, color: Colors.grey),
+                    const SizedBox(height: 16),
+                    Text('加载失败', style: TextStyle(color: Colors.grey[600])),
+                    const SizedBox(height: 8),
+                    ElevatedButton(
+                      onPressed: () => ref.invalidate(messagesProvider(widget.conversationId)),
+                      child: const Text('重试'),
+                    ),
+                  ],
+                ),
+              ),
             ),
           ),
           Container(
@@ -341,7 +355,7 @@ class _MessageBubble extends StatelessWidget {
               ),
             const SizedBox(height: 4),
             Text(
-              timeFormat.format(message.createdAt),
+              message.createdAt != null ? timeFormat.format(message.createdAt!) : '',
               style: TextStyle(
                 color: isMe ? Colors.white70 : Colors.black54,
                 fontSize: 10,

@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:dio/dio.dart';
 import '../data/chat_repository.dart';
 import '../domain/message.dart';
 import '../domain/conversation.dart';
@@ -26,6 +27,12 @@ class ConversationsNotifier extends StateNotifier<AsyncValue<List<Conversation>>
     try {
       final conversations = await _repository.getConversations();
       state = AsyncValue.data(conversations);
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 401) {
+        state = const AsyncValue.data([]);
+      } else {
+        state = AsyncValue.error(e, StackTrace.current);
+      }
     } catch (e) {
       state = AsyncValue.error(e, StackTrace.current);
     }
@@ -53,12 +60,18 @@ class MessagesNotifier extends StateNotifier<AsyncValue<List<Message>>> {
     try {
       final messages = await _repository.getMessages(conversationId);
       state = AsyncValue.data(messages.reversed.toList());
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 401) {
+        state = const AsyncValue.data([]);
+      } else {
+        state = AsyncValue.error('网络错误，请检查网络连接', StackTrace.current);
+      }
     } catch (e) {
       state = AsyncValue.error(e, StackTrace.current);
     }
   }
   
-  Future<void> sendMessage({required String type, String? content, String? mediaUrl, int? duration}) async {
+  Future<bool> sendMessage({required String type, String? content, String? mediaUrl, int? duration}) async {
     try {
       final message = await _repository.sendMessage(
         conversationId: conversationId,
@@ -70,8 +83,9 @@ class MessagesNotifier extends StateNotifier<AsyncValue<List<Message>>> {
       state.whenData((messages) {
         state = AsyncValue.data([...messages, message]);
       });
+      return true;
     } catch (e) {
-      // Handle error
+      return false;
     }
   }
   

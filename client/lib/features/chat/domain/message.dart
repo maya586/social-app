@@ -7,7 +7,7 @@ class Message {
   final String? mediaUrl;
   final int? duration;
   final String status;
-  final DateTime createdAt;
+  final DateTime? createdAt;
   
   Message({
     required this.id,
@@ -18,20 +18,20 @@ class Message {
     this.mediaUrl,
     this.duration,
     required this.status,
-    required this.createdAt,
+    this.createdAt,
   });
   
   factory Message.fromJson(Map<String, dynamic> json) {
     return Message(
-      id: json['id'],
-      conversationId: json['conversation_id'],
-      senderId: json['sender_id'],
-      type: json['type'],
-      content: json['content'],
-      mediaUrl: json['media_url'],
-      duration: json['duration'],
-      status: json['status'],
-      createdAt: DateTime.parse(json['created_at']),
+      id: json['id']?.toString() ?? '',
+      conversationId: json['conversation_id']?.toString() ?? '',
+      senderId: json['sender_id']?.toString() ?? '',
+      type: json['type']?.toString() ?? 'text',
+      content: json['content']?.toString(),
+      mediaUrl: json['media_url']?.toString(),
+      duration: json['duration'] is int ? json['duration'] : null,
+      status: json['status']?.toString() ?? 'sent',
+      createdAt: json['created_at'] != null ? DateTime.tryParse(json['created_at']) : null,
     );
   }
 }

@@ -7,6 +7,7 @@ class ApiClient {
   factory ApiClient() => _instance;
   
   late final Dio _dio;
+  static bool _isRefreshing = false;
   
   ApiClient._internal() {
     _dio = Dio(BaseOptions(
@@ -22,6 +23,9 @@ class ApiClient {
     
     _dio.interceptors.add(InterceptorsWrapper(
       onRequest: (options, handler) async {
+        if (options.path != '/auth/refresh-token' && _isRefreshing) {
+          await Future.delayed(const Duration(milliseconds: 100));
+        }
         final token = await TokenStorage().getAccessToken();
         if (token != null) {
           options.headers['Authorization'] = 'Bearer $token';
@@ -33,18 +37,26 @@ class ApiClient {
       },
       onError: (error, handler) async {
         if (error.type == DioExceptionType.badResponse && error.response?.statusCode == 401) {
-          final refreshToken = await TokenStorage().getRefreshToken();
-          if (refreshToken != null) {
-            try {
-              final response = await _dio.post('/auth/refresh-token', 
-                data: {'refresh_token': refreshToken});
-              final newAccessToken = response.data['data']['access_token'];
-              final newRefreshToken = response.data['data']['refresh_token'];
-              await TokenStorage().saveTokens(newAccessToken, newRefreshToken);
-              
-              error.requestOptions.headers['Authorization'] = 'Bearer $newAccessToken';
-              return handler.resolve(await _dio.fetch(error.requestOptions));
-            } catch (e) {
+          if (!_isRefreshing) {
+            _isRefreshing = true;
+            final refreshToken = await TokenStorage().getRefreshToken();
+            if (refreshToken != null) {
+              try {
+                final response = await _dio.post('/auth/refresh-token', 
+                  data: {'refresh_token': refreshToken});
+                final newAccessToken = response.data['data']['access_token'];
+                final newRefreshToken = response.data['data']['refresh_token'];
+                await TokenStorage().saveTokens(newAccessToken, newRefreshToken);
+                _isRefreshing = false;
+                
+                error.requestOptions.headers['Authorization'] = 'Bearer $newAccessToken';
+                return handler.resolve(await _dio.fetch(error.requestOptions));
+              } catch (e) {
+                _isRefreshing = false;
+                await TokenStorage().clearTokens();
+              }
+            } else {
+              _isRefreshing = false;
               await TokenStorage().clearTokens();
             }
           }
