@@ -3,11 +3,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:dio/dio.dart';
+import 'package:uuid/uuid.dart';
 import 'dart:io';
 import '../data/chat_provider.dart';
 import '../domain/message.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/router/app_router.dart';
+import '../../../core/storage/token_storage.dart';
+import '../../auth/data/auth_provider.dart';
+import '../../call/presentation/call_page.dart';
 
 class ChatPage extends ConsumerStatefulWidget {
   final String conversationId;
@@ -23,6 +27,20 @@ class _ChatPageState extends ConsumerState<ChatPage> {
   final _scrollController = ScrollController();
   final _imagePicker = ImagePicker();
   bool _isUploading = false;
+  String? _currentUserId;
+  
+  @override
+  void initState() {
+    super.initState();
+    _loadCurrentUserId();
+  }
+  
+  Future<void> _loadCurrentUserId() async {
+    final userId = await TokenStorage().getUserId();
+    setState(() {
+      _currentUserId = userId;
+    });
+  }
   
   @override
   void dispose() {
@@ -134,6 +152,19 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     }
   }
   
+  void _startCall(bool isVideo) {
+    final roomId = const Uuid().v4();
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => CallPage(
+          roomId: roomId,
+          isVideo: isVideo,
+          isCaller: true,
+        ),
+      ),
+    );
+  }
+  
   @override
   Widget build(BuildContext context) {
     final messagesAsync = ref.watch(messagesProvider(widget.conversationId));
@@ -141,24 +172,16 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     return Scaffold(
       appBar: AppBar(
 title: const Text('聊天'),
-        actions: [
-           IconButton(
-             icon: const Icon(Icons.phone),
-             onPressed: () {
-               ScaffoldMessenger.of(context).showSnackBar(
-                 const SnackBar(content: Text('通话功能需要完整版客户端')),
-               );
-             },
-           ),
-           IconButton(
-             icon: const Icon(Icons.videocam),
-             onPressed: () {
-               ScaffoldMessenger.of(context).showSnackBar(
-                 const SnackBar(content: Text('通话功能需要完整版客户端')),
-               );
-             },
-           ),
-         ],
+actions: [
+            IconButton(
+              icon: const Icon(Icons.phone),
+              onPressed: () => _startCall(false),
+            ),
+            IconButton(
+              icon: const Icon(Icons.videocam),
+              onPressed: () => _startCall(true),
+            ),
+          ],
       ),
       body: Column(
         children: [
@@ -169,14 +192,17 @@ title: const Text('聊天'),
                   return const Center(child: Text('暂无消息\n发送一条消息开始聊天', textAlign: TextAlign.center));
                 }
                 WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
-                return ListView.builder(
-                  controller: _scrollController,
-                  padding: const EdgeInsets.all(16),
-                  itemCount: messages.length,
-                  itemBuilder: (context, index) {
-                    return _MessageBubble(message: messages[index]);
-                  },
-                );
+return ListView.builder(
+                   controller: _scrollController,
+                   padding: const EdgeInsets.all(16),
+                   itemCount: messages.length,
+                   itemBuilder: (context, index) {
+                     return _MessageBubble(
+                       message: messages[index],
+                       currentUserId: _currentUserId,
+                     );
+                   },
+                 );
               },
               loading: () => const Center(child: CircularProgressIndicator()),
               error: (error, stack) => Center(
@@ -280,12 +306,13 @@ title: const Text('聊天'),
 
 class _MessageBubble extends StatelessWidget {
   final Message message;
+  final String? currentUserId;
   
-  const _MessageBubble({required this.message});
+  const _MessageBubble({required this.message, this.currentUserId});
   
   @override
   Widget build(BuildContext context) {
-    final isMe = true; // TODO: Check if message is from current user
+    final isMe = currentUserId != null && message.senderId == currentUserId;
     final timeFormat = DateFormat('HH:mm');
     
     return Align(
@@ -293,13 +320,33 @@ class _MessageBubble extends StatelessWidget {
       child: Container(
         margin: const EdgeInsets.symmetric(vertical: 4),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        constraints: BoxConstraints(
+          maxWidth: MediaQuery.of(context).size.width * 0.75,
+        ),
         decoration: BoxDecoration(
           color: isMe ? Theme.of(context).primaryColor : Colors.grey[300],
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.only(
+            topLeft: const Radius.circular(16),
+            topRight: const Radius.circular(16),
+            bottomLeft: isMe ? const Radius.circular(16) : const Radius.circular(4),
+            bottomRight: isMe ? const Radius.circular(4) : const Radius.circular(16),
+          ),
         ),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.end,
+          crossAxisAlignment: isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
           children: [
+            if (!isMe)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Text(
+                  '对方',
+                  style: TextStyle(
+                    color: Colors.grey[600],
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
             if (message.type == 'text')
               Text(
                 message.content ?? '',
