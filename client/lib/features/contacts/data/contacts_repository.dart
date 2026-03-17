@@ -12,6 +12,13 @@ class ContactsRepository {
     return contacts.map((json) => Contact.fromJson(json)).toList();
   }
   
+  Future<List<Contact>> getPendingRequests() async {
+    final response = await _api.get('/contacts/pending');
+    final data = response.data['data'] ?? response.data;
+    final List<dynamic> contacts = data is List ? data : [];
+    return contacts.map((json) => Contact.fromJson(json)).toList();
+  }
+  
   Future<Map<String, dynamic>> searchUserByPhone(String phone) async {
     final response = await _api.get('/users/search', queryParameters: {'phone': phone});
     final data = response.data['data'] ?? response.data;
@@ -42,8 +49,22 @@ class ContactsRepository {
     }
   }
   
-  Future<void> acceptContact(String contactId) async {
-    await _api.post('/contacts/accept/$contactId');
+  Future<bool> acceptContact(String requestId) async {
+    try {
+      await _api.post('/contacts/accept/$requestId');
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+  
+  Future<bool> rejectContact(String requestId) async {
+    try {
+      await _api.post('/contacts/reject/$requestId');
+      return true;
+    } catch (e) {
+      return false;
+    }
   }
   
   Future<void> deleteContact(String contactId) async {

@@ -35,8 +35,10 @@ func Setup(r *gin.Engine, authService *service.AuthService, authHandler *handler
 			contacts := protected.Group("/contacts")
 			{
 				contacts.GET("", contactHandler.GetContacts)
+				contacts.GET("/pending", contactHandler.GetPendingRequests)
 				contacts.POST("/request", contactHandler.AddContact)
 				contacts.POST("/accept/:id", contactHandler.AcceptContact)
+				contacts.POST("/reject/:id", contactHandler.RejectContact)
 				contacts.DELETE("/:id", contactHandler.DeleteContact)
 			}
 

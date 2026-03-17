@@ -117,3 +117,16 @@ func (s *ContactService) DeleteContact(userID, contactID uuid.UUID) error {
 	}
 	return s.contactRepo.Delete(contact.ID)
 }
+
+func (s *ContactService) RejectContact(userID, requestID uuid.UUID) error {
+	contact, err := s.contactRepo.FindByID(requestID)
+	if err != nil {
+		return ErrContactNotFound
+	}
+
+	if contact.ContactID != userID {
+		return errors.New("not authorized to reject this request")
+	}
+
+	return s.contactRepo.Delete(contact.ID)
+}

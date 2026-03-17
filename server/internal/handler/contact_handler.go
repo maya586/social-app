@@ -1,12 +1,12 @@
 package handler
 
 import (
-	"strconv"
-	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 	"github.com/example/social-app/server/internal/middleware"
 	"github.com/example/social-app/server/internal/service"
 	"github.com/example/social-app/server/pkg/response"
+	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
+	"strconv"
 )
 
 type ContactHandler struct {
@@ -80,6 +80,34 @@ func (h *ContactHandler) DeleteContact(c *gin.Context) {
 
 	if err := h.contactService.DeleteContact(userID, contactID); err != nil {
 		response.InternalError(c, "Failed to delete contact")
+		return
+	}
+
+	response.Success(c, nil)
+}
+
+func (h *ContactHandler) GetPendingRequests(c *gin.Context) {
+	userID := middleware.GetUserID(c).(uuid.UUID)
+
+	contacts, err := h.contactService.GetPendingRequests(userID)
+	if err != nil {
+		response.InternalError(c, "Failed to get pending requests")
+		return
+	}
+
+	response.Success(c, contacts)
+}
+
+func (h *ContactHandler) RejectContact(c *gin.Context) {
+	userID := middleware.GetUserID(c).(uuid.UUID)
+	contactID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		response.BadRequest(c, "Invalid contact ID")
+		return
+	}
+
+	if err := h.contactService.RejectContact(userID, contactID); err != nil {
+		response.InternalError(c, "Failed to reject contact")
 		return
 	}
 
