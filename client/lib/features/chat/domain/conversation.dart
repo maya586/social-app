@@ -5,7 +5,7 @@ class Conversation {
   final String? avatarUrl;
   final String? ownerId;
   final DateTime? lastMessageAt;
-  final DateTime createdAt;
+  final DateTime? createdAt;
   String? lastMessage;
   String? lastSenderName;
   int unreadCount;
@@ -17,7 +17,7 @@ class Conversation {
     this.avatarUrl,
     this.ownerId,
     this.lastMessageAt,
-    required this.createdAt,
+    this.createdAt,
     this.lastMessage,
     this.lastSenderName,
     this.unreadCount = 0,
@@ -25,15 +25,17 @@ class Conversation {
   
   factory Conversation.fromJson(Map<String, dynamic> json) {
     return Conversation(
-      id: json['id'],
-      type: json['type'],
-      name: json['name'],
-      avatarUrl: json['avatar_url'],
-      ownerId: json['owner_id'],
+      id: json['id']?.toString() ?? '',
+      type: json['type']?.toString() ?? 'private',
+      name: json['name']?.toString(),
+      avatarUrl: json['avatar_url']?.toString(),
+      ownerId: json['owner_id']?.toString(),
       lastMessageAt: json['last_message_at'] != null
-          ? DateTime.parse(json['last_message_at'])
+          ? DateTime.tryParse(json['last_message_at'])
           : null,
-      createdAt: DateTime.parse(json['created_at']),
+      createdAt: json['created_at'] != null
+          ? DateTime.tryParse(json['created_at'])
+          : null,
     );
   }
 }

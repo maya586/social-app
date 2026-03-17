@@ -309,15 +309,27 @@ class _ContactsPageState extends ConsumerState<ContactsPage> {
   }
   
   Future<void> _startChat(BuildContext context, Contact contact) async {
+    if (contact.contactId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('联系人信息无效')),
+      );
+      return;
+    }
+    
     try {
       final chatRepo = ref.read(chatRepositoryProvider);
       final conversation = await chatRepo.createPrivateConversation(contact.contactId);
+      if (conversation.id.isEmpty) {
+        throw Exception('会话创建失败');
+      }
       ref.read(routerProvider.notifier).goChat(conversation.id);
       ref.invalidate(conversationsProvider);
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('创建会话失败: $e')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('创建会话失败: $e')),
+        );
+      }
     }
   }
 }

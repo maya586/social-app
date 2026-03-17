@@ -62,6 +62,10 @@ class ChatRepository {
   }
   
   Future<Conversation> createPrivateConversation(String contactId) async {
+    if (contactId.isEmpty) {
+      throw Exception('联系人ID不能为空');
+    }
+    
     final response = await _api.post('/conversations', data: {
       'type': 'private',
       'contact_id': contactId,
