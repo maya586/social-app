@@ -13,6 +13,7 @@ import 'dart:io';
 import '../data/chat_provider.dart';
 import '../domain/message.dart';
 import '../../../core/network/api_client.dart';
+import '../../../core/network/api_config.dart';
 import '../../../core/network/websocket_service.dart';
 import '../../../core/router/app_router.dart';
 import '../../../core/storage/token_storage.dart';
@@ -566,7 +567,7 @@ class _MessageBubble extends StatelessWidget {
                 borderRadius: BorderRadius.circular(8),
                 child: message.mediaUrl != null
                     ? Image.network(
-                        'http://localhost:8080/api/v1${message.mediaUrl}',
+                        '${ApiConfig.baseUrl}${message.mediaUrl}',
                         width: 200,
                         height: 200,
                         fit: BoxFit.cover,
