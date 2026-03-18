@@ -1,192 +1,321 @@
 import 'package:flutter_webrtc/flutter_webrtc.dart';
-import 'package:web_socket_channel/web_socket_channel.dart';
 import 'dart:convert';
+import '../../../core/network/websocket_service.dart';
+import '../../../core/storage/token_storage.dart';
 
 class CallService {
-  static final CallService _instance = CallService._internal();
-  factory CallService() => _instance;
-  
-  CallService._internal();
-  
   RTCPeerConnection? _peerConnection;
   MediaStream? _localStream;
-  WebSocketChannel? _signalingChannel;
   String? _currentRoomId;
+  String? _currentUserId;
+  bool _remoteDescriptionSet = false;
+  final List<Map<String, dynamic>> _pendingCandidates = [];
+  
+  static bool useTurnServer = false;
+  
   Function(MediaStream)? onRemoteStream;
   Function()? onCallEnded;
   Function(String)? onError;
+  Function()? onConnected;
   
   Future<void> initialize() async {
+    _currentUserId = await TokenStorage().getUserId();
+    _remoteDescriptionSet = false;
+    _pendingCandidates.clear();
     await _createPeerConnection();
   }
   
   Future<void> _createPeerConnection() async {
-    final config = {
+    Map<String, dynamic> config = {
       'iceServers': [
         {'urls': 'stun:stun.l.google.com:19302'},
         {'urls': 'stun:stun1.l.google.com:19302'},
-      ]
+        {'urls': 'stun:stun2.l.google.com:19302'},
+      ],
+      'iceCandidatePoolSize': 20,
+      'sdpSemantics': 'unified-plan',
+      'iceTransportPolicy': 'all',
     };
+    
+    if (useTurnServer) {
+      config['iceServers'].addAll([
+        {
+          'urls': 'turn:openrelay.metered.ca:80',
+          'username': 'openrelayproject',
+          'credential': 'openrelayproject',
+        },
+        {
+          'urls': 'turn:openrelay.metered.ca:443',
+          'username': 'openrelayproject',
+          'credential': 'openrelayproject',
+        },
+        {
+          'urls': 'turn:openrelay.metered.ca:443?transport=tcp',
+          'username': 'openrelayproject',
+          'credential': 'openrelayproject',
+        },
+      ]);
+    }
     
     _peerConnection = await createPeerConnection(config);
     
     _peerConnection?.onIceCandidate = (candidate) {
-      _sendSignal({
-        'type': 'ice_candidate',
-        'candidate': candidate.toMap(),
-      });
+      if (_currentRoomId != null && candidate.candidate != null) {
+        WebSocketService().send({
+          'event': 'call:ice-candidate',
+          'data': {
+            'room_id': _currentRoomId,
+            'candidate': {
+              'candidate': candidate.candidate,
+              'sdpMid': candidate.sdpMid,
+              'sdpMLineIndex': candidate.sdpMLineIndex,
+            },
+          },
+        });
+      }
     };
     
-    _peerConnection?.onTrack = (RTCTrackEvent event) {
+    _peerConnection?.onIceGatheringState = (state) {
+      print('ICE gathering state: $state');
+    };
+    
+    _peerConnection?.onIceConnectionState = (state) {
+      print('ICE connection state: $state');
+      if (state == RTCIceConnectionState.RTCIceConnectionStateConnected ||
+          state == RTCIceConnectionState.RTCIceConnectionStateCompleted) {
+        onConnected?.call();
+      }
+      if (state == RTCIceConnectionState.RTCIceConnectionStateDisconnected ||
+          state == RTCIceConnectionState.RTCIceConnectionStateFailed ||
+          state == RTCIceConnectionState.RTCIceConnectionStateClosed) {
+        Future.delayed(const Duration(milliseconds: 500), () {
+          if (_peerConnection?.iceConnectionState == RTCIceConnectionState.RTCIceConnectionStateFailed ||
+              _peerConnection?.iceConnectionState == RTCIceConnectionState.RTCIceConnectionStateDisconnected) {
+            onCallEnded?.call();
+          }
+        });
+      }
+    };
+    
+    _peerConnection?.onTrack = (event) {
+      print('onTrack: ${event.track.kind}, streams: ${event.streams.length}');
       if (event.streams.isNotEmpty) {
         onRemoteStream?.call(event.streams[0]);
       }
     };
     
-    _peerConnection?.onConnectionState = (state) {
-      if (state == RTCPeerConnectionState.RTCPeerConnectionStateDisconnected ||
-          state == RTCPeerConnectionState.RTCPeerConnectionStateFailed) {
-        endCall();
-      }
+    _peerConnection?.onAddStream = (stream) {
+      print('onAddStream: ${stream.id}');
+      onRemoteStream?.call(stream);
     };
+    
+    _peerConnection?.onConnectionState = (state) {
+      print('Peer connection state: $state');
+    };
+  }
+  
+  Future<void> startCall(String roomId, bool video, String conversationId) async {
+    _currentRoomId = roomId;
+    _remoteDescriptionSet = false;
+    
+    _localStream = await _getUserMedia(video);
+    
+    for (var track in _localStream!.getTracks()) {
+      _peerConnection?.addTrack(track, _localStream!);
+    }
+    
+    final offer = await _peerConnection!.createOffer({
+      'offerToReceiveAudio': true,
+      'offerToReceiveVideo': video,
+    });
+    await _peerConnection!.setLocalDescription(offer);
+    
+    WebSocketService().send({
+      'event': 'call:offer',
+      'data': {
+        'room_id': roomId,
+        'conversation_id': conversationId,
+        'is_video': video,
+        'type': 'offer',
+        'sdp': offer.sdp,
+      },
+    });
+    
+    print('Offer sent');
+  }
+  
+  Future<void> answerCall(String roomId, bool video, Map<String, dynamic> offerData) async {
+    _currentRoomId = roomId;
+    _remoteDescriptionSet = false;
+    
+    final sdp = offerData['sdp'] as String?;
+    if (sdp == null) return;
+    
+    _localStream = await _getUserMedia(video);
+    
+    for (var track in _localStream!.getTracks()) {
+      _peerConnection?.addTrack(track, _localStream!);
+    }
+    
+    await _peerConnection!.setRemoteDescription(RTCSessionDescription(sdp, 'offer'));
+    _remoteDescriptionSet = true;
+    print('Remote offer set');
+    
+    _addPendingCandidates();
+    
+    final answer = await _peerConnection!.createAnswer({
+      'offerToReceiveAudio': true,
+      'offerToReceiveVideo': video,
+    });
+    await _peerConnection!.setLocalDescription(answer);
+    
+    WebSocketService().send({
+      'event': 'call:answer',
+      'data': {
+        'room_id': roomId,
+        'type': 'answer',
+        'sdp': answer.sdp,
+        'target_user_id': offerData['sender_id'],
+      },
+    });
+    
+    print('Answer sent');
+  }
+  
+  Future<void> handleSignal(Map<String, dynamic> message) async {
+    final event = message['event'];
+    final rawData = message['data'];
+    
+    if (rawData == null) return;
+    
+    Map<String, dynamic>? data;
+    if (rawData is Map<String, dynamic>) {
+      data = rawData;
+    } else if (rawData is String) {
+      try {
+        data = jsonDecode(rawData) as Map<String, dynamic>;
+      } catch (e) {
+        return;
+      }
+    }
+    
+    if (data == null) return;
+    if (data['sender_id'] == _currentUserId) return;
+    
+    if (event == 'call:answer') {
+      final sdp = data['sdp'] as String?;
+      if (sdp != null && _peerConnection != null) {
+        print('Setting remote answer');
+        await _peerConnection!.setRemoteDescription(RTCSessionDescription(sdp, 'answer'));
+        _remoteDescriptionSet = true;
+        _addPendingCandidates();
+      }
+    }
+    
+    if (event == 'call:ice-candidate') {
+      final c = data['candidate'];
+      if (c != null) {
+        Map<String, dynamic> cm;
+        if (c is Map<String, dynamic>) {
+          cm = c;
+        } else if (c is String) {
+          try {
+            cm = jsonDecode(c) as Map<String, dynamic>;
+          } catch (e) {
+            return;
+          }
+        } else {
+          return;
+        }
+        
+        if (_remoteDescriptionSet && _peerConnection != null) {
+          try {
+            final candidate = RTCIceCandidate(
+              cm['candidate'],
+              cm['sdpMid'],
+              cm['sdpMLineIndex'],
+            );
+            await _peerConnection!.addCandidate(candidate);
+            print('ICE candidate added');
+          } catch (e) {
+            print('Error adding ICE candidate: $e');
+          }
+        } else {
+          _pendingCandidates.add(cm);
+          print('ICE candidate cached (${_pendingCandidates.length})');
+        }
+      }
+    }
+    
+    if (event == 'call:end' || event == 'call:leave') {
+      onCallEnded?.call();
+    }
+  }
+  
+  void _addPendingCandidates() async {
+    if (_peerConnection == null) return;
+    print('Adding ${_pendingCandidates.length} pending candidates');
+    for (var cm in _pendingCandidates) {
+      try {
+        final candidate = RTCIceCandidate(
+          cm['candidate'],
+          cm['sdpMid'],
+          cm['sdpMLineIndex'],
+        );
+        await _peerConnection!.addCandidate(candidate);
+        print('Pending candidate added');
+      } catch (e) {
+        print('Error adding pending candidate: $e');
+      }
+    }
+    _pendingCandidates.clear();
   }
   
   Future<MediaStream> _getUserMedia(bool video) async {
-    final mediaConstraints = {
-      'audio': true,
+    final constraints = <String, dynamic>{
+      'audio': {
+        'echoCancellation': true,
+        'noiseSuppression': true,
+        'autoGainControl': true,
+      },
       'video': video ? {
-        'mandatory': {
-          'minWidth': '640',
-          'minHeight': '480',
-          'minFrameRate': '30',
-        },
         'facingMode': 'user',
-        'optional': [],
+        'width': {'ideal': 640},
+        'height': {'ideal': 480},
       } : false,
     };
-    
-    return await navigator.mediaDevices.getUserMedia(mediaConstraints);
-  }
-  
-  Future<void> startCall(String roomId, bool video, String wsUrl) async {
-    try {
-      _currentRoomId = roomId;
-      
-      _localStream = await _getUserMedia(video);
-      
-      for (var track in _localStream!.getTracks()) {
-        _peerConnection?.addTrack(track, _localStream!);
-      }
-      
-      _signalingChannel = WebSocketChannel.connect(
-        Uri.parse('$wsUrl/call/$roomId'),
-      );
-      
-      _signalingChannel?.stream.listen((message) {
-        _handleSignal(jsonDecode(message));
-      });
-      
-      final offer = await _peerConnection?.createOffer();
-      await _peerConnection?.setLocalDescription(offer!);
-      
-      _sendSignal({
-        'type': 'offer',
-        'sdp': offer?.sdp,
-      });
-    } catch (e) {
-      onError?.call('启动通话失败: $e');
-    }
-  }
-  
-  Future<void> joinCall(String roomId, bool video, String wsUrl) async {
-    try {
-      _currentRoomId = roomId;
-      
-      _localStream = await _getUserMedia(video);
-      
-      for (var track in _localStream!.getTracks()) {
-        _peerConnection?.addTrack(track, _localStream!);
-      }
-      
-      _signalingChannel = WebSocketChannel.connect(
-        Uri.parse('$wsUrl/call/$roomId'),
-      );
-      
-      _signalingChannel?.stream.listen((message) {
-        _handleSignal(jsonDecode(message));
-      });
-    } catch (e) {
-      onError?.call('加入通话失败: $e');
-    }
-  }
-  
-  void _handleSignal(Map<String, dynamic> data) async {
-    switch (data['type']) {
-      case 'offer':
-        await _peerConnection?.setRemoteDescription(
-          RTCSessionDescription(data['sdp'], 'offer'),
-        );
-        final answer = await _peerConnection?.createAnswer();
-        await _peerConnection?.setLocalDescription(answer!);
-        _sendSignal({
-          'type': 'answer',
-          'sdp': answer?.sdp,
-        });
-        break;
-      case 'answer':
-        await _peerConnection?.setRemoteDescription(
-          RTCSessionDescription(data['sdp'], 'answer'),
-        );
-        break;
-      case 'ice_candidate':
-        await _peerConnection?.addCandidate(
-          RTCIceCandidate(
-            data['candidate']['candidate'],
-            data['candidate']['sdpMid'],
-            data['candidate']['sdpMLineIndex'],
-          ),
-        );
-        break;
-    }
-  }
-  
-  void _sendSignal(Map<String, dynamic> data) {
-    _signalingChannel?.sink.add(jsonEncode(data));
+    final stream = await navigator.mediaDevices.getUserMedia(constraints);
+    print('Got media stream: audio=${stream.getAudioTracks().length}, video=${stream.getVideoTracks().length}');
+    return stream;
   }
   
   void toggleMicrophone(bool enabled) {
-    _localStream?.getAudioTracks().forEach((track) {
+    for (var track in _localStream?.getAudioTracks() ?? []) {
       track.enabled = enabled;
-    });
+    }
   }
   
-  void toggleCamera(bool enabled) {
-    _localStream?.getVideoTracks().forEach((track) {
-      track.enabled = enabled;
-    });
-  }
-  
-  Future<void> switchCamera() async {
-    _localStream?.getVideoTracks().forEach((track) async {
-      await Helper.switchCamera(track);
-    });
+  void notifyCallEnd() {
+    if (_currentRoomId != null) {
+      WebSocketService().send({
+        'event': 'call:end',
+        'data': {'room_id': _currentRoomId},
+      });
+    }
   }
   
   Future<void> endCall() async {
-    _localStream?.getTracks().forEach((track) {
+    for (var track in _localStream?.getTracks() ?? []) {
       track.stop();
-    });
+    }
     await _localStream?.dispose();
     _localStream = null;
     
     await _peerConnection?.close();
-    await _createPeerConnection();
-    
-    _signalingChannel?.sink.close();
-    _signalingChannel = null;
+    _peerConnection = null;
     _currentRoomId = null;
-    
-    onCallEnded?.call();
+    _remoteDescriptionSet = false;
+    _pendingCandidates.clear();
   }
   
   MediaStream? get localStream => _localStream;

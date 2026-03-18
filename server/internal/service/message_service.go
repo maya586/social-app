@@ -2,10 +2,10 @@ package service
 
 import (
 	"errors"
-	"time"
-	"github.com/google/uuid"
 	"github.com/example/social-app/server/internal/model"
 	"github.com/example/social-app/server/internal/repository"
+	"github.com/google/uuid"
+	"time"
 )
 
 var (
@@ -120,8 +120,8 @@ func (s *MessageService) Recall(messageID, userID uuid.UUID) error {
 	return s.messageRepo.SoftDelete(messageID)
 }
 
-func (s *MessageService) ListConversations(userID uuid.UUID, limit, offset int) ([]model.Conversation, error) {
-	return s.conversationRepo.ListByUserID(userID, limit, offset)
+func (s *MessageService) ListConversations(userID uuid.UUID, limit, offset int) ([]model.ConversationWithDetails, error) {
+	return s.conversationRepo.ListWithDetailsByUserID(userID, limit, offset)
 }
 
 func (s *MessageService) CreateConversation(userID uuid.UUID, convType model.ConversationType, name string, memberIDs []uuid.UUID, contactID uuid.UUID) (*model.Conversation, error) {
@@ -195,6 +195,18 @@ func (s *MessageService) GetConversation(conversationID, userID uuid.UUID) (*mod
 	}
 
 	return s.conversationRepo.FindByID(conversationID)
+}
+
+func (s *MessageService) GetConversationMembers(conversationID uuid.UUID) ([]uuid.UUID, error) {
+	members, err := s.conversationRepo.GetMembers(conversationID)
+	if err != nil {
+		return nil, err
+	}
+	var userIDs []uuid.UUID
+	for _, m := range members {
+		userIDs = append(userIDs, m.UserID)
+	}
+	return userIDs, nil
 }
 
 func (s *MessageService) MarkAsRead(conversationID, userID uuid.UUID) error {

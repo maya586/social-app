@@ -4,12 +4,16 @@ import 'package:intl/intl.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:dio/dio.dart';
 import 'package:uuid/uuid.dart';
+import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import '../data/chat_provider.dart';
 import '../domain/message.dart';
 import '../../../core/network/api_client.dart';
+import '../../../core/network/websocket_service.dart';
 import '../../../core/router/app_router.dart';
 import '../../../core/storage/token_storage.dart';
+import '../../../core/theme/app_theme.dart';
 import '../../auth/data/auth_provider.dart';
 import '../../call/presentation/call_page.dart';
 
@@ -28,11 +32,105 @@ class _ChatPageState extends ConsumerState<ChatPage> {
   final _imagePicker = ImagePicker();
   bool _isUploading = false;
   String? _currentUserId;
+  StreamSubscription? _wsSubscription;
   
   @override
   void initState() {
     super.initState();
     _loadCurrentUserId();
+    _listenToWebSocket();
+  }
+  
+  void _listenToWebSocket() {
+    _wsSubscription = WebSocketService().messages.listen((message) {
+      final event = message['event'] as String?;
+      
+      if (event == 'message:new') {
+        final rawData = message['data'];
+        Map<String, dynamic>? data;
+        if (rawData is Map<String, dynamic>) {
+          data = rawData;
+        } else if (rawData is String) {
+          try {
+            data = jsonDecode(rawData) as Map<String, dynamic>;
+          } catch (e) {}
+        }
+        if (data != null) {
+          final msgConversationId = data['conversation_id']?.toString();
+          final senderId = data['sender_id']?.toString();
+          
+          if (msgConversationId == widget.conversationId) {
+            if (senderId != null && senderId != _currentUserId) {
+              final newMessage = Message.fromJson(data);
+              ref.read(messagesProvider(widget.conversationId).notifier).addMessage(newMessage);
+              _scrollToBottom();
+            }
+          }
+        }
+      } else if (event == 'call:offer') {
+        final rawData = message['data'];
+        Map<String, dynamic>? data;
+        if (rawData is Map<String, dynamic>) {
+          data = rawData;
+        } else if (rawData is String) {
+          try {
+            data = jsonDecode(rawData) as Map<String, dynamic>;
+          } catch (e) {}
+        }
+        if (data != null) {
+          _showIncomingCall(data);
+        }
+      }
+    });
+  }
+  
+  void _showIncomingCall(Map<String, dynamic> data) {
+    final roomId = data['room_id'] as String?;
+    final isVideo = data['is_video'] as bool? ?? false;
+    final callerName = data['caller_name'] as String? ?? '用户';
+    
+    if (roomId == null) return;
+    
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: Text('来电'),
+        content: Text('$callerName 邀请您${isVideo ? '视频' : '语音'}通话'),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+            },
+            child: const Text('拒绝', style: TextStyle(color: Colors.red)),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (context) => CallPage(
+                    roomId: roomId,
+                    isVideo: isVideo,
+                    isCaller: false,
+                    offerData: data,
+                  ),
+                ),
+              );
+            },
+            child: const Text('接听'),
+          ),
+        ],
+      ),
+    );
+  }
+  
+  @override
+  void dispose() {
+    _messageController.dispose();
+    _scrollController.dispose();
+    _wsSubscription?.cancel();
+    super.dispose();
   }
   
   Future<void> _loadCurrentUserId() async {
@@ -40,13 +138,6 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     setState(() {
       _currentUserId = userId;
     });
-  }
-  
-  @override
-  void dispose() {
-    _messageController.dispose();
-    _scrollController.dispose();
-    super.dispose();
   }
   
   Future<void> _pickAndSendImage() async {
@@ -154,151 +245,175 @@ class _ChatPageState extends ConsumerState<ChatPage> {
   
   void _startCall(bool isVideo) {
     final roomId = const Uuid().v4();
+    
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (context) => CallPage(
           roomId: roomId,
           isVideo: isVideo,
           isCaller: true,
+          conversationId: widget.conversationId,
         ),
       ),
     );
+  }
+  
+  void _goBack() {
+    ref.read(routerProvider.notifier).goHome();
   }
   
   @override
   Widget build(BuildContext context) {
     final messagesAsync = ref.watch(messagesProvider(widget.conversationId));
     
-    return Scaffold(
-      appBar: AppBar(
-title: const Text('聊天'),
-actions: [
+    return Container(
+      decoration: const BoxDecoration(gradient: AppTheme.backgroundGradient),
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        appBar: AppBar(
+          backgroundColor: Colors.transparent,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back, color: Colors.white),
+            onPressed: _goBack,
+          ),
+          title: const Text('聊天', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+          actions: [
             IconButton(
-              icon: const Icon(Icons.phone),
+              icon: const Icon(Icons.phone, color: Colors.white),
               onPressed: () => _startCall(false),
             ),
             IconButton(
-              icon: const Icon(Icons.videocam),
+              icon: const Icon(Icons.videocam, color: Colors.white),
               onPressed: () => _startCall(true),
             ),
           ],
-      ),
-      body: Column(
-        children: [
-          Expanded(
-            child: messagesAsync.when(
-              data: (messages) {
-                if (messages.isEmpty) {
-                  return const Center(child: Text('暂无消息\n发送一条消息开始聊天', textAlign: TextAlign.center));
-                }
-                WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
-return ListView.builder(
-                   controller: _scrollController,
-                   padding: const EdgeInsets.all(16),
-                   itemCount: messages.length,
-                   itemBuilder: (context, index) {
-                     return _MessageBubble(
-                       message: messages[index],
-                       currentUserId: _currentUserId,
-                     );
-                   },
-                 );
-              },
-              loading: () => const Center(child: CircularProgressIndicator()),
-              error: (error, stack) => Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.error_outline, size: 48, color: Colors.grey),
-                    const SizedBox(height: 16),
-                    Text('加载失败', style: TextStyle(color: Colors.grey[600])),
-                    const SizedBox(height: 8),
-                    ElevatedButton(
-                      onPressed: () => ref.invalidate(messagesProvider(widget.conversationId)),
-                      child: const Text('重试'),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: Theme.of(context).scaffoldBackgroundColor,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.grey.withOpacity(0.2),
-                  blurRadius: 4,
-                ),
-              ],
-            ),
-            child: SafeArea(
-              child: Row(
-                children: [
-                  IconButton(
-                    icon: const Icon(Icons.add),
-                    onPressed: _isUploading ? null : () {
-                      showModalBottomSheet(
-                        context: context,
-                        builder: (context) => SafeArea(
-                          child: Wrap(
-                            children: [
-                              ListTile(
-                                leading: const Icon(Icons.photo_library),
-                                title: const Text('从相册选择'),
-                                onTap: () {
-                                  Navigator.pop(context);
-                                  _pickAndSendImage();
-                                },
-                              ),
-                              ListTile(
-                                leading: const Icon(Icons.camera_alt),
-                                title: const Text('拍照'),
-                                onTap: () {
-                                  Navigator.pop(context);
-                                  _takeAndSendPhoto();
-                                },
-                              ),
-                            ],
+        ),
+        body: LayoutBuilder(
+          builder: (context, constraints) {
+            return Column(
+              children: [
+                Expanded(
+                  child: messagesAsync.when(
+                    data: (messages) {
+                      if (messages.isEmpty) {
+                        return Center(
+                          child: GlassContainer(
+                            padding: const EdgeInsets.all(24),
+                            child: const Text(
+                              '暂无消息\n发送一条消息开始聊天',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(color: Colors.white),
+                            ),
                           ),
-                        ),
+                        );
+                      }
+                      WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
+                      return ListView.builder(
+                        controller: _scrollController,
+                        padding: const EdgeInsets.all(16),
+                        itemCount: messages.length,
+                        itemBuilder: (context, index) {
+                          return _MessageBubble(
+                            message: messages[index],
+                            currentUserId: _currentUserId,
+                            maxWidth: constraints.maxWidth,
+                          );
+                        },
                       );
                     },
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.mic),
-                    onPressed: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('语音消息需要完整版客户端')),
-                      );
-                    },
-                  ),
-                  Expanded(
-                    child: TextField(
-                      controller: _messageController,
-                      decoration: InputDecoration(
-                        hintText: '输入消息...',
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(24),
-                        ),
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 8,
+                    loading: () => const Center(child: CircularProgressIndicator(color: Colors.white)),
+                    error: (error, stack) => Center(
+                      child: GlassContainer(
+                        padding: const EdgeInsets.all(24),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.error_outline, size: 48, color: Colors.white54),
+                            const SizedBox(height: 16),
+                            const Text('加载失败', style: TextStyle(color: Colors.white70)),
+                            const SizedBox(height: 8),
+                            ElevatedButton(
+                              onPressed: () => ref.invalidate(messagesProvider(widget.conversationId)),
+                              child: const Text('重试'),
+                            ),
+                          ],
                         ),
                       ),
-                      onSubmitted: (_) => _sendMessage(),
                     ),
                   ),
-                  IconButton(
-                    icon: const Icon(Icons.send),
-                    onPressed: _isUploading ? null : _sendMessage,
+                ),
+                GlassContainer(
+                  margin: const EdgeInsets.all(8),
+                  padding: const EdgeInsets.all(8),
+                  borderRadius: 24,
+                  child: SafeArea(
+                    child: Row(
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.add, color: Colors.white),
+                          onPressed: _isUploading ? null : () {
+                            showModalBottomSheet(
+                              context: context,
+                              backgroundColor: Colors.transparent,
+                              builder: (context) => GlassContainer(
+                                padding: const EdgeInsets.all(16),
+                                borderRadius: 20,
+                                child: SafeArea(
+                                  child: Wrap(
+                                    children: [
+                                      ListTile(
+                                        leading: const Icon(Icons.photo_library, color: Colors.white),
+                                        title: const Text('从相册选择', style: TextStyle(color: Colors.white)),
+                                        onTap: () {
+                                          Navigator.pop(context);
+                                          _pickAndSendImage();
+                                        },
+                                      ),
+                                      ListTile(
+                                        leading: const Icon(Icons.camera_alt, color: Colors.white),
+                                        title: const Text('拍照', style: TextStyle(color: Colors.white)),
+                                        onTap: () {
+                                          Navigator.pop(context);
+                                          _takeAndSendPhoto();
+                                        },
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.mic, color: Colors.white),
+                          onPressed: () {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('语音消息需要完整版客户端')),
+                            );
+                          },
+                        ),
+                        Expanded(
+                          child: TextField(
+                            controller: _messageController,
+                            style: const TextStyle(color: AppTheme.inputText, fontSize: 16, fontWeight: FontWeight.w500),
+                            decoration: AppTheme.glassInputDecoration(
+                              hintText: '输入消息...',
+                            ),
+                            onSubmitted: (_) => _sendMessage(),
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.send, color: Colors.white),
+                          onPressed: _isUploading ? null : _sendMessage,
+                        ),
+                      ],
+                    ),
                   ),
-                ],
-              ),
-            ),
-          ),
-        ],
+                ),
+              ],
+            );
+          },
+        ),
       ),
     );
   }
@@ -307,13 +422,15 @@ return ListView.builder(
 class _MessageBubble extends StatelessWidget {
   final Message message;
   final String? currentUserId;
+  final double maxWidth;
   
-  const _MessageBubble({required this.message, this.currentUserId});
+  const _MessageBubble({required this.message, this.currentUserId, this.maxWidth = 400});
   
   @override
   Widget build(BuildContext context) {
     final isMe = currentUserId != null && message.senderId == currentUserId;
     final timeFormat = DateFormat('HH:mm');
+    final bubbleMaxWidth = maxWidth > 600 ? 450.0 : maxWidth * 0.75;
     
     return Align(
       alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
@@ -321,15 +438,21 @@ class _MessageBubble extends StatelessWidget {
         margin: const EdgeInsets.symmetric(vertical: 4),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         constraints: BoxConstraints(
-          maxWidth: MediaQuery.of(context).size.width * 0.75,
+          maxWidth: bubbleMaxWidth,
         ),
         decoration: BoxDecoration(
-          color: isMe ? Theme.of(context).primaryColor : Colors.grey[300],
+          color: isMe 
+              ? AppTheme.primaryColor.withOpacity(0.9)
+              : Colors.white.withOpacity(0.2),
           borderRadius: BorderRadius.only(
             topLeft: const Radius.circular(16),
             topRight: const Radius.circular(16),
             bottomLeft: isMe ? const Radius.circular(16) : const Radius.circular(4),
             bottomRight: isMe ? const Radius.circular(4) : const Radius.circular(16),
+          ),
+          border: Border.all(
+            color: Colors.white.withOpacity(0.1),
+            width: 1,
           ),
         ),
         child: Column(
@@ -341,7 +464,7 @@ class _MessageBubble extends StatelessWidget {
                 child: Text(
                   '对方',
                   style: TextStyle(
-                    color: Colors.grey[600],
+                    color: Colors.white.withOpacity(0.7),
                     fontSize: 12,
                     fontWeight: FontWeight.w500,
                   ),
@@ -350,9 +473,7 @@ class _MessageBubble extends StatelessWidget {
             if (message.type == 'text')
               Text(
                 message.content ?? '',
-                style: TextStyle(
-                  color: isMe ? Colors.white : Colors.black,
-                ),
+                style: const TextStyle(color: Colors.white),
               )
             else if (message.type == 'image')
               ClipRRect(
@@ -392,11 +513,11 @@ class _MessageBubble extends StatelessWidget {
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.play_arrow, color: isMe ? Colors.white : Colors.black),
+                  Icon(Icons.play_arrow, color: Colors.white.withOpacity(0.9)),
                   const SizedBox(width: 8),
                   Text(
                     '${message.duration ?? 0}s',
-                    style: TextStyle(color: isMe ? Colors.white : Colors.black),
+                    style: const TextStyle(color: Colors.white),
                   ),
                 ],
               ),
@@ -404,7 +525,7 @@ class _MessageBubble extends StatelessWidget {
             Text(
               message.createdAt != null ? timeFormat.format(message.createdAt!) : '',
               style: TextStyle(
-                color: isMe ? Colors.white70 : Colors.black54,
+                color: Colors.white.withOpacity(0.6),
                 fontSize: 10,
               ),
             ),

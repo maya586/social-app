@@ -1,10 +1,10 @@
 package handler
 
 import (
-	"strings"
-	"github.com/gin-gonic/gin"
 	"github.com/example/social-app/server/internal/service"
 	"github.com/example/social-app/server/pkg/response"
+	"github.com/gin-gonic/gin"
+	"strings"
 )
 
 type AuthHandler struct {
@@ -105,9 +105,7 @@ func (h *AuthHandler) RefreshToken(c *gin.Context) {
 		return
 	}
 
-	result, err := h.authService.Login(&service.LoginInput{
-		Phone: claims.Phone,
-	})
+	result, err := h.authService.RefreshToken(claims.UserID.String(), claims.Phone)
 	if err != nil {
 		response.InternalError(c, "Failed to refresh token")
 		return

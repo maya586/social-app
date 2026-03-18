@@ -1,21 +1,30 @@
 package handler
 
 import (
-	"strconv"
-	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
+	"encoding/json"
+	"log"
+
 	"github.com/example/social-app/server/internal/middleware"
 	"github.com/example/social-app/server/internal/model"
 	"github.com/example/social-app/server/internal/service"
+	"github.com/example/social-app/server/internal/websocket"
 	"github.com/example/social-app/server/pkg/response"
+	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
+	"strconv"
 )
 
 type MessageHandler struct {
 	messageService *service.MessageService
+	hub            *websocket.Hub
 }
 
 func NewMessageHandler(messageService *service.MessageService) *MessageHandler {
 	return &MessageHandler{messageService: messageService}
+}
+
+func (h *MessageHandler) SetHub(hub *websocket.Hub) {
+	h.hub = hub
 }
 
 // Send godoc
@@ -52,6 +61,32 @@ func (h *MessageHandler) Send(c *gin.Context) {
 			response.InternalError(c, "Failed to send message")
 		}
 		return
+	}
+
+	// Broadcast message to conversation members via WebSocket
+	if h.hub != nil {
+		members, err := h.messageService.GetConversationMembers(input.ConversationID)
+		if err == nil {
+			msgData := map[string]interface{}{
+				"event": "message:new",
+				"data": map[string]interface{}{
+					"id":              message.ID,
+					"conversation_id": message.ConversationID,
+					"sender_id":       message.SenderID,
+					"type":            message.Type,
+					"content":         message.Content,
+					"media_url":       message.MediaURL,
+					"created_at":      message.CreatedAt,
+				},
+			}
+			msgBytes, _ := json.Marshal(msgData)
+			log.Printf("[Message] Broadcasting to %d members: %s", len(members), string(msgBytes))
+			h.hub.SendToUsers(members, msgBytes)
+		} else {
+			log.Printf("[Message] Failed to get members: %v", err)
+		}
+	} else {
+		log.Println("[Message] Hub is nil, cannot broadcast")
 	}
 
 	response.Created(c, message)

@@ -4,12 +4,14 @@ import (
 	"context"
 	"errors"
 	"time"
-	"golang.org/x/crypto/bcrypt"
-	"gorm.io/gorm"
+
 	"github.com/example/social-app/server/internal/cache"
 	"github.com/example/social-app/server/internal/model"
 	"github.com/example/social-app/server/internal/repository"
 	"github.com/example/social-app/server/pkg/jwt"
+	"github.com/google/uuid"
+	"golang.org/x/crypto/bcrypt"
+	"gorm.io/gorm"
 )
 
 var (
@@ -90,6 +92,19 @@ func (s *AuthService) Login(input *LoginInput) (*AuthResponse, error) {
 
 	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(input.Password)); err != nil {
 		return nil, ErrInvalidPassword
+	}
+
+	return s.generateTokens(user)
+}
+
+func (s *AuthService) RefreshToken(userID string, phone string) (*AuthResponse, error) {
+	uid, err := uuid.Parse(userID)
+	if err != nil {
+		return nil, ErrUserNotFound
+	}
+	user, err := s.userRepo.FindByID(uid)
+	if err != nil {
+		return nil, ErrUserNotFound
 	}
 
 	return s.generateTokens(user)

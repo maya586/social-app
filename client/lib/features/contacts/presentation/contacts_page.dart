@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/router/app_router.dart';
+import '../../../core/theme/app_theme.dart';
 import '../data/contacts_repository.dart';
 import '../domain/contact.dart';
 import '../../chat/data/chat_repository.dart';
@@ -38,11 +39,13 @@ class _ContactsPageState extends ConsumerState<ContactsPage> {
     final pendingAsync = ref.watch(pendingRequestsProvider);
     
     return Scaffold(
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
-        title: const Text('联系人'),
+        backgroundColor: Colors.transparent,
+        title: const Text('联系人', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
         actions: [
           IconButton(
-            icon: const Icon(Icons.person_add),
+            icon: const Icon(Icons.person_add, color: Colors.white),
             onPressed: () => _showAddContactDialog(),
           ),
         ],
@@ -53,12 +56,10 @@ class _ContactsPageState extends ConsumerState<ContactsPage> {
             padding: const EdgeInsets.all(16),
             child: TextField(
               controller: _searchController,
-              decoration: InputDecoration(
+              style: const TextStyle(color: AppTheme.inputText, fontSize: 16, fontWeight: FontWeight.w500),
+              decoration: AppTheme.glassInputDecoration(
                 hintText: '搜索联系人或手机号',
-                prefixIcon: const Icon(Icons.search),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(24),
-                ),
+                prefixIcon: const Icon(Icons.search, color: AppTheme.inputHint),
               ),
               onSubmitted: (value) {
                 if (value.isNotEmpty) {
@@ -74,12 +75,22 @@ class _ContactsPageState extends ConsumerState<ContactsPage> {
                   data: (contacts) {
                     return _buildContactList(context, pending, contacts);
                   },
-                  loading: () => const Center(child: CircularProgressIndicator()),
-                  error: (error, stack) => Center(child: Text('加载失败: $error')),
+                  loading: () => const Center(child: CircularProgressIndicator(color: Colors.white)),
+                  error: (error, stack) => Center(
+                    child: GlassContainer(
+                      padding: const EdgeInsets.all(24),
+                      child: Text('加载失败: $error', style: const TextStyle(color: Colors.white)),
+                    ),
+                  ),
                 );
               },
-              loading: () => const Center(child: CircularProgressIndicator()),
-              error: (error, stack) => Center(child: Text('加载失败: $error')),
+              loading: () => const Center(child: CircularProgressIndicator(color: Colors.white)),
+              error: (error, stack) => Center(
+                child: GlassContainer(
+                  padding: const EdgeInsets.all(24),
+                  child: Text('加载失败: $error', style: const TextStyle(color: Colors.white)),
+                ),
+              ),
             ),
           ),
         ],
@@ -89,21 +100,20 @@ class _ContactsPageState extends ConsumerState<ContactsPage> {
   
   Widget _buildContactList(BuildContext context, List<Contact> pending, List<Contact> contacts) {
     return ListView(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
       children: [
         if (pending.isNotEmpty) ...[
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            color: Colors.orange.shade50,
+          GlassContainer(
+            margin: const EdgeInsets.symmetric(vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            borderRadius: 16,
             child: Row(
               children: [
-                Icon(Icons.person_add_alt_1, color: Colors.orange.shade700, size: 20),
+                Icon(Icons.person_add_alt_1, color: AppTheme.warningColor, size: 20),
                 const SizedBox(width: 8),
                 Text(
                   '好友请求 (${pending.length})',
-                  style: TextStyle(
-                    color: Colors.orange.shade700,
-                    fontWeight: FontWeight.bold,
-                  ),
+                  style: TextStyle(color: AppTheme.warningColor, fontWeight: FontWeight.bold),
                 ),
               ],
             ),
@@ -113,27 +123,26 @@ class _ContactsPageState extends ConsumerState<ContactsPage> {
             onAccept: () => _acceptRequest(contact.id),
             onReject: () => _rejectRequest(contact.id),
           )),
-          const Divider(height: 24),
+          const SizedBox(height: 16),
         ],
         if (contacts.isEmpty && pending.isEmpty)
-          const Padding(
-            padding: EdgeInsets.all(32),
-            child: Center(child: Text('暂无联系人\n点击右上角添加', textAlign: TextAlign.center)),
+          GlassContainer(
+            margin: const EdgeInsets.all(32),
+            padding: const EdgeInsets.all(32),
+            child: const Text('暂无联系人\n点击右上角添加', textAlign: TextAlign.center, style: TextStyle(color: Colors.white)),
           )
         else if (contacts.isEmpty && pending.isNotEmpty)
-          const Padding(
-            padding: EdgeInsets.all(32),
-            child: Center(child: Text('暂无已添加的联系人', textAlign: TextAlign.center)),
+          GlassContainer(
+            margin: const EdgeInsets.all(32),
+            padding: const EdgeInsets.all(32),
+            child: const Text('暂无已添加的联系人', textAlign: TextAlign.center, style: TextStyle(color: Colors.white)),
           )
         else ...[
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
             child: Text(
               '我的联系人 (${contacts.length})',
-              style: TextStyle(
-                color: Colors.grey.shade600,
-                fontWeight: FontWeight.w500,
-              ),
+              style: TextStyle(color: Colors.white.withOpacity(0.7), fontWeight: FontWeight.w500),
             ),
           ),
           ...contacts.map((contact) => _ContactTile(
@@ -319,6 +328,7 @@ class _ContactsPageState extends ConsumerState<ContactsPage> {
     try {
       final chatRepo = ref.read(chatRepositoryProvider);
       final conversation = await chatRepo.createPrivateConversation(contact.contactId);
+      
       if (conversation.id.isEmpty) {
         throw Exception('会话创建失败');
       }
@@ -350,27 +360,37 @@ class _PendingRequestTile extends StatelessWidget {
     final displayName = contact.getDisplayName();
     final subtitle = contact.contactUser?.phone ?? contact.userId?.substring(0, 8) ?? '未知';
     
-    return ListTile(
-      leading: CircleAvatar(
-        backgroundColor: Colors.orange.shade100,
-        child: Text(displayName.isNotEmpty ? displayName.substring(0, 1) : '?'),
-      ),
-      title: Text(displayName),
-      subtitle: Text('请求添加好友 · $subtitle'),
-      trailing: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          TextButton(
-            onPressed: onAccept,
-            style: TextButton.styleFrom(foregroundColor: Colors.green),
-            child: const Text('接受'),
+    return GlassContainer(
+      margin: const EdgeInsets.symmetric(vertical: 4),
+      borderRadius: 16,
+      child: ListTile(
+        leading: CircleAvatar(
+          backgroundColor: AppTheme.warningColor.withOpacity(0.8),
+          child: Text(
+            displayName.isNotEmpty ? displayName.substring(0, 1) : '?',
+            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
           ),
-          TextButton(
-            onPressed: onReject,
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('拒绝'),
-          ),
-        ],
+        ),
+        title: Text(displayName, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+        subtitle: Text(
+          '请求添加好友 · $subtitle',
+          style: TextStyle(color: Colors.white.withOpacity(0.7)),
+        ),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextButton(
+              onPressed: onAccept,
+              style: TextButton.styleFrom(foregroundColor: AppTheme.successColor),
+              child: const Text('接受'),
+            ),
+            TextButton(
+              onPressed: onReject,
+              style: TextButton.styleFrom(foregroundColor: AppTheme.errorColor),
+              child: const Text('拒绝'),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -390,17 +410,31 @@ class _ContactTile extends StatelessWidget {
     final displayName = contact.getDisplayName();
     final subtitle = contact.contactUser?.phone ?? contact.contactId.substring(0, 8);
     
-    return ListTile(
-      leading: CircleAvatar(
-        child: Text(displayName.isNotEmpty ? displayName.substring(0, 1) : '?'),
+    return GlassContainer(
+      margin: const EdgeInsets.symmetric(vertical: 4),
+      borderRadius: 16,
+      child: ListTile(
+        leading: CircleAvatar(
+          backgroundColor: AppTheme.primaryColor.withOpacity(0.8),
+          child: Text(
+            displayName.isNotEmpty ? displayName.substring(0, 1) : '?',
+            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+          ),
+        ),
+        title: Text(displayName, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+        subtitle: Text(subtitle, style: TextStyle(color: Colors.white.withOpacity(0.7))),
+        trailing: Container(
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(colors: [AppTheme.primaryColor, AppTheme.secondaryColor]),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: IconButton(
+            icon: const Icon(Icons.chat, color: Colors.white),
+            onPressed: onStartChat,
+          ),
+        ),
+        onTap: onStartChat,
       ),
-      title: Text(displayName),
-      subtitle: Text(subtitle),
-      trailing: IconButton(
-        icon: const Icon(Icons.chat),
-        onPressed: onStartChat,
-      ),
-      onTap: onStartChat,
     );
   }
 }

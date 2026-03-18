@@ -1,8 +1,10 @@
 package main
 
 import (
-	"github.com/gin-gonic/gin"
 	"log"
+
+	"github.com/gin-gonic/gin"
+	"github.com/joho/godotenv"
 
 	_ "github.com/example/social-app/server/docs"
 	"github.com/example/social-app/server/internal/cache"
@@ -36,6 +38,10 @@ import (
 // @name Authorization
 // @description Type "Bearer" followed by a space and JWT token.
 func main() {
+	if err := godotenv.Load(); err != nil {
+		log.Println("No .env file found, using environment variables")
+	}
+
 	cfg := config.Load()
 
 	if err := database.Connect(&cfg.Database); err != nil {
@@ -75,6 +81,8 @@ func main() {
 	callHandler := handler.NewCallHandler(hub)
 	userHandler := handler.NewUserHandler(userRepo)
 	wsHandler := handler.NewWSHandler(hub)
+
+	messageHandler.SetHub(hub)
 
 	r := gin.Default()
 	router.Setup(r, authService, authHandler, contactHandler, messageHandler, fileHandler, callHandler, userHandler, wsHandler)

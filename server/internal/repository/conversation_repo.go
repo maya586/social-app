@@ -1,10 +1,10 @@
 package repository
 
 import (
-	"github.com/google/uuid"
-	"gorm.io/gorm"
 	"github.com/example/social-app/server/internal/database"
 	"github.com/example/social-app/server/internal/model"
+	"github.com/google/uuid"
+	"gorm.io/gorm"
 )
 
 type ConversationRepo struct{}
@@ -43,6 +43,48 @@ func (r *ConversationRepo) ListByUserID(userID uuid.UUID, limit, offset int) ([]
 		Limit(limit).Offset(offset).
 		Find(&convs).Error
 	return convs, err
+}
+
+func (r *ConversationRepo) ListWithDetailsByUserID(userID uuid.UUID, limit, offset int) ([]model.ConversationWithDetails, error) {
+	var results []model.ConversationWithDetails
+
+	query := `
+		SELECT 
+			c.id, c.type, c.name, c.avatar_url, c.owner_id, c.last_message_at, c.created_at,
+			COALESCE(m.content, '') as last_message,
+			COALESCE(u.nickname, '') as last_sender_name,
+			COALESCE(unread.count, 0) as unread_count,
+			other_user.id as other_user_id,
+			other_user.nickname as other_user_name,
+			other_user.avatar_url as other_user_avatar
+		FROM conversations c
+		JOIN conversation_members cm ON c.id = cm.conversation_id AND cm.user_id = ?
+		LEFT JOIN LATERAL (
+			SELECT content, sender_id FROM messages 
+			WHERE conversation_id = c.id
+			ORDER BY created_at DESC LIMIT 1
+		) m ON true
+		LEFT JOIN users u ON m.sender_id = u.id
+		LEFT JOIN LATERAL (
+			SELECT COUNT(*) as count FROM messages 
+			WHERE conversation_id = c.id AND sender_id != ?
+			AND created_at > COALESCE((
+				SELECT last_read_at FROM conversation_members 
+				WHERE conversation_id = c.id AND user_id = ?
+			), '1970-01-01')
+		) unread ON true
+		LEFT JOIN LATERAL (
+			SELECT u2.id, u2.nickname, u2.avatar_url FROM conversation_members cm2
+			JOIN users u2 ON cm2.user_id = u2.id
+			WHERE cm2.conversation_id = c.id AND cm2.user_id != ?
+			LIMIT 1
+		) other_user ON c.type = 'private'
+		ORDER BY c.last_message_at DESC NULLS LAST
+		LIMIT ? OFFSET ?
+	`
+
+	err := database.DB.Raw(query, userID, userID, userID, userID, limit, offset).Scan(&results).Error
+	return results, err
 }
 
 func (r *ConversationRepo) AddMember(member *model.ConversationMember) error {

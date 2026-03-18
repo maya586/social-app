@@ -2,9 +2,11 @@ package websocket
 
 import (
 	"encoding/json"
-	"time"
-	gorillaws "github.com/gorilla/websocket"
+	"log"
+
 	"github.com/google/uuid"
+	gorillaws "github.com/gorilla/websocket"
+	"time"
 )
 
 type Client struct {
@@ -15,8 +17,18 @@ type Client struct {
 }
 
 type WSMessage struct {
-	Event string      `json:"event"`
-	Data  interface{} `json:"data"`
+	Event string          `json:"event"`
+	Data  json.RawMessage `json:"data"`
+}
+
+type CallSignalData struct {
+	RoomID         string                 `json:"room_id,omitempty"`
+	ConversationID string                 `json:"conversation_id,omitempty"`
+	IsVideo        bool                   `json:"is_video,omitempty"`
+	TargetUserID   string                 `json:"target_user_id,omitempty"`
+	Type           string                 `json:"type,omitempty"`
+	SDP            string                 `json:"sdp,omitempty"`
+	Candidate      map[string]interface{} `json:"candidate,omitempty"`
 }
 
 func NewClient(hub *Hub, conn *gorillaws.Conn, userID uuid.UUID) *Client {
@@ -80,14 +92,82 @@ func (c *Client) WritePump() {
 }
 
 func (c *Client) handleMessage(msg *WSMessage) {
+	log.Printf("[WebSocket] Received message: event=%s, userID=%s", msg.Event, c.userID.String())
+
 	switch msg.Event {
 	case "ping":
 		c.send <- []byte(`{"event":"pong"}`)
 	case "sync":
-		// Client requests message sync after reconnection
-		// The actual sync is handled by the handler layer
 		c.send <- []byte(`{"event":"sync:ack"}`)
-	case "call:offer", "call:answer", "call:ice-candidate", "call:join", "call:leave":
-		c.hub.BroadcastCallSignal(msg, c.userID)
+
+	case "call:offer":
+		var data CallSignalData
+		if err := json.Unmarshal(msg.Data, &data); err != nil {
+			return
+		}
+		log.Printf("[Call] Offer received from %s, room=%s", c.userID.String(), data.RoomID)
+		c.broadcastCallSignalWithSender(msg, c.userID.String())
+
+	case "call:answer":
+		var data CallSignalData
+		if err := json.Unmarshal(msg.Data, &data); err != nil {
+			return
+		}
+		log.Printf("[Call] Answer received from %s, target=%s", c.userID.String(), data.TargetUserID)
+		if data.TargetUserID != "" {
+			c.sendCallSignalToTarget(msg, c.userID.String(), data.TargetUserID)
+		}
+
+	case "call:ice-candidate":
+		var data CallSignalData
+		if err := json.Unmarshal(msg.Data, &data); err != nil {
+			return
+		}
+		c.broadcastCallSignalWithSender(msg, c.userID.String())
+
+	case "call:leave", "call:end":
+		var data CallSignalData
+		if err := json.Unmarshal(msg.Data, &data); err != nil {
+			return
+		}
+		log.Printf("[Call] Call ended by %s, room=%s", c.userID.String(), data.RoomID)
+		c.broadcastCallSignalWithSender(msg, c.userID.String())
+
+	case "call:join":
+		c.broadcastCallSignalWithSender(msg, c.userID.String())
+	}
+}
+
+func (c *Client) broadcastCallSignalWithSender(msg *WSMessage, senderID string) {
+	var dataMap map[string]interface{}
+	if err := json.Unmarshal(msg.Data, &dataMap); err != nil {
+		return
+	}
+	dataMap["sender_id"] = senderID
+
+	updatedData, _ := json.Marshal(dataMap)
+	updatedMsg := WSMessage{
+		Event: msg.Event,
+		Data:  updatedData,
+	}
+
+	c.hub.BroadcastCallSignal(&updatedMsg, c.userID, nil)
+}
+
+func (c *Client) sendCallSignalToTarget(msg *WSMessage, senderID string, targetUserID string) {
+	var dataMap map[string]interface{}
+	if err := json.Unmarshal(msg.Data, &dataMap); err != nil {
+		return
+	}
+	dataMap["sender_id"] = senderID
+
+	updatedData, _ := json.Marshal(dataMap)
+	updatedMsg := WSMessage{
+		Event: msg.Event,
+		Data:  updatedData,
+	}
+
+	if targetID, err := uuid.Parse(targetUserID); err == nil {
+		c.hub.BroadcastCallSignal(&updatedMsg, c.userID, &targetID)
 	}
 }

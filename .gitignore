@@ -1,0 +1,85 @@
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+bin/
+dist/
+
+# Flutter
+.dart_tool/
+.packages
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+*.lock
+!pubspec.lock
+ephemeral/
+windows/flutter/ephemeral/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*.iml
+*.ipr
+*.iws
+
+# Environment
+.env
+.env.local
+.env.*.local
+*.env
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Server
+server/bin/
+server/tmp/
+*.test
+*.out
+*.prof
+
+# Client
+client/.agents/
+client/build/
+client/.dart_tool/
+skills-lock.json
+
+# Deployment
+deploy/logs/
+deploy/v1.0.*/
+!deploy/v1.0.0/
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# SSL
+*.pem
+*.key
+*.crt
+
+# Secrets
+secrets/
+credentials.json
+firebase-credentials.json
+*.pem
+*.key

@@ -7,9 +7,16 @@ import '../../features/chat/presentation/chat_page.dart';
 import '../../features/contacts/presentation/contacts_page.dart';
 import '../../features/profile/presentation/profile_page.dart';
 
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+
+RouterNotifier? _globalRouterNotifier;
+
 final routerProvider = StateNotifierProvider<RouterNotifier, String>((ref) {
-  return RouterNotifier();
+  _globalRouterNotifier = RouterNotifier();
+  return _globalRouterNotifier!;
 });
+
+RouterNotifier? get globalRouterNotifier => _globalRouterNotifier;
 
 class RouterNotifier extends StateNotifier<String> {
   RouterNotifier() : super('/login');
