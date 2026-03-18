@@ -158,10 +158,9 @@ class _ChatPageState extends ConsumerState<ChatPage> {
       
       final formData = FormData.fromMap({
         'file': await MultipartFile.fromFile(image.path),
-        'type': 'image',
       });
       
-      final response = await ApiClient().dio.post('/files/upload', data: formData);
+      final response = await ApiClient().dio.post('/files/upload?type=image', data: formData);
       final url = response.data['url'];
       
       ref.read(messagesProvider(widget.conversationId).notifier).sendMessage(
@@ -208,10 +207,9 @@ class _ChatPageState extends ConsumerState<ChatPage> {
       
       final formData = FormData.fromMap({
         'file': await MultipartFile.fromFile(photo.path),
-        'type': 'image',
       });
       
-      final response = await ApiClient().dio.post('/files/upload', data: formData);
+      final response = await ApiClient().dio.post('/files/upload?type=image', data: formData);
       final url = response.data['url'];
       
       ref.read(messagesProvider(widget.conversationId).notifier).sendMessage(
@@ -264,10 +262,9 @@ class _ChatPageState extends ConsumerState<ChatPage> {
       
       final formData = FormData.fromMap({
         'file': await MultipartFile.fromFile(file.path, filename: fileName),
-        'type': fileType,
       });
       
-      final response = await ApiClient().dio.post('/files/upload', data: formData);
+      final response = await ApiClient().dio.post('/files/upload?type=$fileType', data: formData);
       final url = response.data['url'];
       
       ref.read(messagesProvider(widget.conversationId).notifier).sendMessage(
