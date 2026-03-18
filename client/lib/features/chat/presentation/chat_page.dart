@@ -144,18 +144,18 @@ class _ChatPageState extends ConsumerState<ChatPage> {
   }
   
   Future<void> _pickAndSendImage() async {
-    final XFile? image = await _imagePicker.pickImage(
-      source: ImageSource.gallery,
-      maxWidth: 1024,
-      maxHeight: 1024,
-      imageQuality: 85,
-    );
-    
-    if (image == null) return;
-    
-    setState(() => _isUploading = true);
-    
     try {
+      final XFile? image = await _imagePicker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 1024,
+        maxHeight: 1024,
+        imageQuality: 85,
+      );
+      
+      if (image == null) return;
+      
+      setState(() => _isUploading = true);
+      
       final formData = FormData.fromMap({
         'file': await MultipartFile.fromFile(image.path),
         'type': 'image',
@@ -173,7 +173,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('上传失败: $e')),
+          SnackBar(content: Text('选择图片失败: $e')),
         );
       }
     } finally {
@@ -185,12 +185,22 @@ class _ChatPageState extends ConsumerState<ChatPage> {
   
   Future<void> _takeAndSendPhoto() async {
     try {
-      final XFile? photo = await _imagePicker.pickImage(
-        source: ImageSource.camera,
-        maxWidth: 1024,
-        maxHeight: 1024,
-        imageQuality: 85,
-      );
+      XFile? photo;
+      
+      if (Platform.isWindows || Platform.isLinux) {
+        final typeGroup = XTypeGroup(
+          label: 'images',
+          extensions: ['jpg', 'jpeg', 'png', 'gif', 'webp'],
+        );
+        photo = await openFile(acceptedTypeGroups: [typeGroup]);
+      } else {
+        photo = await _imagePicker.pickImage(
+          source: ImageSource.camera,
+          maxWidth: 1024,
+          maxHeight: 1024,
+          imageQuality: 85,
+        );
+      }
       
       if (photo == null) return;
       
@@ -213,7 +223,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('拍照失败: $e')),
+          SnackBar(content: Text('选择图片失败: $e')),
         );
       }
     } finally {
@@ -412,7 +422,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                         IconButton(
                           icon: const Icon(Icons.add, color: Colors.white),
                           onPressed: _isUploading ? null : () {
-                            showModalBottomSheet(
+showModalBottomSheet(
                               context: context,
                               backgroundColor: Colors.transparent,
                               builder: (context) => GlassContainer(
@@ -421,22 +431,33 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                                 child: SafeArea(
                                   child: Wrap(
                                     children: [
-                                      ListTile(
-                                        leading: const Icon(Icons.photo_library, color: Colors.white),
-                                        title: const Text('从相册选择', style: TextStyle(color: Colors.white)),
-                                        onTap: () {
-                                          Navigator.pop(context);
-                                          _pickAndSendImage();
-                                        },
-                                      ),
-                                      ListTile(
-                                        leading: const Icon(Icons.camera_alt, color: Colors.white),
-                                        title: const Text('拍照', style: TextStyle(color: Colors.white)),
-                                        onTap: () {
-                                          Navigator.pop(context);
-                                          _takeAndSendPhoto();
-                                        },
-                                      ),
+                                      if (Platform.isWindows || Platform.isLinux) ...[
+                                        ListTile(
+                                          leading: const Icon(Icons.image, color: Colors.white),
+                                          title: const Text('选择图片', style: TextStyle(color: Colors.white)),
+                                          onTap: () {
+                                            Navigator.pop(context);
+                                            _takeAndSendPhoto();
+                                          },
+                                        ),
+                                      ] else ...[
+                                        ListTile(
+                                          leading: const Icon(Icons.photo_library, color: Colors.white),
+                                          title: const Text('从相册选择', style: TextStyle(color: Colors.white)),
+                                          onTap: () {
+                                            Navigator.pop(context);
+                                            _pickAndSendImage();
+                                          },
+                                        ),
+                                        ListTile(
+                                          leading: const Icon(Icons.camera_alt, color: Colors.white),
+                                          title: const Text('拍照', style: TextStyle(color: Colors.white)),
+                                          onTap: () {
+                                            Navigator.pop(context);
+                                            _takeAndSendPhoto();
+                                          },
+                                        ),
+                                      ],
                                       ListTile(
                                         leading: const Icon(Icons.attach_file, color: Colors.white),
                                         title: const Text('发送文件', style: TextStyle(color: Colors.white)),
