@@ -34,6 +34,8 @@ class _CallPageState extends ConsumerState<CallPage> {
   bool _isCameraEnabled = true;
   bool _isConnected = false;
   bool _dialogShown = false;
+  bool _isLoading = true;
+  String? _errorMessage;
   Duration _callDuration = Duration.zero;
   StreamSubscription? _wsSubscription;
   Timer? _durationTimer;
@@ -45,52 +47,94 @@ class _CallPageState extends ConsumerState<CallPage> {
   }
   
   Future<void> _initCall() async {
-    await _localRenderer.initialize();
-    await _remoteRenderer.initialize();
-    await _callService.initialize();
-    
-    _callService.onRemoteStream = (stream) {
+    try {
+      final hasPermission = await _callService.checkPermissions(widget.isVideo);
+      if (!hasPermission) {
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+            _errorMessage = '需要${widget.isVideo ? '摄像头和' : ''}麦克风权限才能通话';
+          });
+        }
+        return;
+      }
+      
+      await _localRenderer.initialize();
+      await _remoteRenderer.initialize();
+      final initialized = await _callService.initialize();
+      if (!initialized) {
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+            _errorMessage = '初始化通话失败';
+          });
+        }
+        return;
+      }
+      
+      _callService.onRemoteStream = (stream) {
+        if (mounted) {
+          _remoteRenderer.srcObject = stream;
+          setState(() => _isConnected = true);
+          _startDurationTimer();
+        }
+      };
+      
+      _callService.onConnected = () {
+        if (mounted) {
+          setState(() => _isConnected = true);
+          _startDurationTimer();
+        }
+      };
+      
+      _callService.onCallEnded = () {
+        if (mounted && !_dialogShown) {
+          _showCallEndedDialog('通话已结束');
+        }
+      };
+      
+      _callService.onError = (error) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error)));
+        }
+      };
+      
+      _wsSubscription = WebSocketService().messages.listen((message) {
+        final event = message['event'] as String?;
+        if (event?.startsWith('call:') == true) {
+          _callService.handleSignal(message);
+        }
+      });
+      
+      bool success = false;
+      if (widget.isCaller) {
+        success = await _callService.startCall(widget.roomId, widget.isVideo, widget.conversationId ?? '');
+      } else if (widget.offerData != null) {
+        success = await _callService.answerCall(widget.roomId, widget.isVideo, widget.offerData!);
+      } else {
+        success = true;
+      }
+      
+      if (!success && mounted) {
+        setState(() {
+          _isLoading = false;
+          _errorMessage = '无法建立通话连接';
+        });
+        return;
+      }
+      
+      _localRenderer.srcObject = _callService.localStream;
       if (mounted) {
-        _remoteRenderer.srcObject = stream;
-        setState(() => _isConnected = true);
-        _startDurationTimer();
+        setState(() => _isLoading = false);
       }
-    };
-    
-    _callService.onConnected = () {
+    } catch (e) {
       if (mounted) {
-        setState(() => _isConnected = true);
-        _startDurationTimer();
+        setState(() {
+          _isLoading = false;
+          _errorMessage = '通话初始化失败: $e';
+        });
       }
-    };
-    
-    _callService.onCallEnded = () {
-      if (mounted && !_dialogShown) {
-        _showCallEndedDialog('通话已结束');
-      }
-    };
-    
-    _callService.onError = (error) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error)));
-      }
-    };
-    
-    _wsSubscription = WebSocketService().messages.listen((message) {
-      final event = message['event'] as String?;
-      if (event?.startsWith('call:') == true) {
-        _callService.handleSignal(message);
-      }
-    });
-    
-    if (widget.isCaller) {
-      await _callService.startCall(widget.roomId, widget.isVideo, widget.conversationId ?? '');
-    } else if (widget.offerData != null) {
-      await _callService.answerCall(widget.roomId, widget.isVideo, widget.offerData!);
     }
-    
-    _localRenderer.srcObject = _callService.localStream;
-    setState(() {});
   }
   
   void _startDurationTimer() {
@@ -140,6 +184,46 @@ class _CallPageState extends ConsumerState<CallPage> {
   
   @override
   Widget build(BuildContext context) {
+    if (_isLoading) {
+      return Scaffold(
+        backgroundColor: Colors.black,
+        body: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const CircularProgressIndicator(color: Colors.white),
+              const SizedBox(height: 16),
+              Text('正在${widget.isCaller ? '发起' : '接听'}通话...', style: const TextStyle(color: Colors.white)),
+            ],
+          ),
+        ),
+      );
+    }
+    
+    if (_errorMessage != null) {
+      return Scaffold(
+        backgroundColor: Colors.black,
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.error_outline, color: Colors.red, size: 48),
+                const SizedBox(height: 16),
+                Text(_errorMessage!, style: const TextStyle(color: Colors.white), textAlign: TextAlign.center),
+                const SizedBox(height: 24),
+                ElevatedButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('返回'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+    
     return Scaffold(
       backgroundColor: Colors.black,
       body: Stack(

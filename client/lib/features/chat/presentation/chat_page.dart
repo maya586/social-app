@@ -2,8 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:file_selector/file_selector.dart';
 import 'package:dio/dio.dart';
 import 'package:uuid/uuid.dart';
+import 'package:mime/mime.dart';
+import 'package:path/path.dart' as p;
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -181,18 +184,18 @@ class _ChatPageState extends ConsumerState<ChatPage> {
   }
   
   Future<void> _takeAndSendPhoto() async {
-    final XFile? photo = await _imagePicker.pickImage(
-      source: ImageSource.camera,
-      maxWidth: 1024,
-      maxHeight: 1024,
-      imageQuality: 85,
-    );
-    
-    if (photo == null) return;
-    
-    setState(() => _isUploading = true);
-    
     try {
+      final XFile? photo = await _imagePicker.pickImage(
+        source: ImageSource.camera,
+        maxWidth: 1024,
+        maxHeight: 1024,
+        imageQuality: 85,
+      );
+      
+      if (photo == null) return;
+      
+      setState(() => _isUploading = true);
+      
       final formData = FormData.fromMap({
         'file': await MultipartFile.fromFile(photo.path),
         'type': 'image',
@@ -204,6 +207,63 @@ class _ChatPageState extends ConsumerState<ChatPage> {
       ref.read(messagesProvider(widget.conversationId).notifier).sendMessage(
         type: 'image',
         mediaUrl: url,
+      );
+      
+      _scrollToBottom();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('拍照失败: $e')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isUploading = false);
+      }
+    }
+  }
+  
+  Future<void> _pickAndSendFile() async {
+    try {
+      final XFile? file = await openFile();
+      if (file == null) return;
+      
+      final fileSize = await file.length();
+      if (fileSize > 50 * 1024 * 1024) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('文件大小不能超过50MB')),
+          );
+        }
+        return;
+      }
+      
+      setState(() => _isUploading = true);
+      
+      final fileName = p.basename(file.path);
+      final mimeType = lookupMimeType(file.path) ?? 'application/octet-stream';
+      
+      String fileType = 'file';
+      if (mimeType.startsWith('image/')) {
+        fileType = 'image';
+      } else if (mimeType.startsWith('video/')) {
+        fileType = 'video';
+      } else if (mimeType.startsWith('audio/')) {
+        fileType = 'audio';
+      }
+      
+      final formData = FormData.fromMap({
+        'file': await MultipartFile.fromFile(file.path, filename: fileName),
+        'type': fileType,
+      });
+      
+      final response = await ApiClient().dio.post('/files/upload', data: formData);
+      final url = response.data['url'];
+      
+      ref.read(messagesProvider(widget.conversationId).notifier).sendMessage(
+        type: fileType,
+        mediaUrl: url,
+        content: fileName,
       );
       
       _scrollToBottom();
@@ -377,6 +437,14 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                                           _takeAndSendPhoto();
                                         },
                                       ),
+                                      ListTile(
+                                        leading: const Icon(Icons.attach_file, color: Colors.white),
+                                        title: const Text('发送文件', style: TextStyle(color: Colors.white)),
+                                        onTap: () {
+                                          Navigator.pop(context);
+                                          _pickAndSendFile();
+                                        },
+                                      ),
                                     ],
                                   ),
                                 ),
@@ -508,6 +576,88 @@ class _MessageBubble extends StatelessWidget {
                         color: Colors.grey[300],
                         child: const Icon(Icons.image),
                       ),
+              )
+            else if (message.type == 'video')
+              GestureDetector(
+                onTap: () {
+                  if (message.mediaUrl != null) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('视频播放功能开发中')),
+                    );
+                  }
+                },
+                child: Container(
+                  width: 200,
+                  height: 150,
+                  decoration: BoxDecoration(
+                    color: Colors.black26,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.play_circle_outline, color: Colors.white, size: 48),
+                      const SizedBox(height: 8),
+                      Text(
+                        message.content ?? '视频',
+                        style: const TextStyle(color: Colors.white70, fontSize: 12),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+              )
+            else if (message.type == 'audio')
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.audiotrack, color: Colors.white),
+                    const SizedBox(width: 8),
+                    Text(
+                      message.content ?? '音频',
+                      style: const TextStyle(color: Colors.white),
+                    ),
+                  ],
+                ),
+              )
+            else if (message.type == 'file')
+              GestureDetector(
+                onTap: () {
+                  if (message.mediaUrl != null) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('文件下载功能开发中')),
+                    );
+                  }
+                },
+                child: Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.insert_drive_file, color: Colors.white),
+                      const SizedBox(width: 8),
+                      Flexible(
+                        child: Text(
+                          message.content ?? '文件',
+                          style: const TextStyle(color: Colors.white),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               )
             else if (message.type == 'voice')
               Row(

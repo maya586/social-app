@@ -1,4 +1,5 @@
 import 'package:flutter_webrtc/flutter_webrtc.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'dart:convert';
 import '../../../core/network/websocket_service.dart';
 import '../../../core/storage/token_storage.dart';
@@ -10,6 +11,7 @@ class CallService {
   String? _currentUserId;
   bool _remoteDescriptionSet = false;
   final List<Map<String, dynamic>> _pendingCandidates = [];
+  bool _isInitialized = false;
   
   static bool useTurnServer = false;
   
@@ -18,11 +20,43 @@ class CallService {
   Function(String)? onError;
   Function()? onConnected;
   
-  Future<void> initialize() async {
-    _currentUserId = await TokenStorage().getUserId();
-    _remoteDescriptionSet = false;
-    _pendingCandidates.clear();
-    await _createPeerConnection();
+  Future<bool> checkPermissions(bool video) async {
+    var microphoneStatus = await Permission.microphone.status;
+    if (!microphoneStatus.isGranted) {
+      microphoneStatus = await Permission.microphone.request();
+      if (!microphoneStatus.isGranted) {
+        onError?.call('需要麦克风权限才能通话');
+        return false;
+      }
+    }
+    
+    if (video) {
+      var cameraStatus = await Permission.camera.status;
+      if (!cameraStatus.isGranted) {
+        cameraStatus = await Permission.camera.request();
+        if (!cameraStatus.isGranted) {
+          onError?.call('需要摄像头权限才能视频通话');
+          return false;
+        }
+      }
+    }
+    return true;
+  }
+  
+  Future<bool> initialize() async {
+    if (_isInitialized) return true;
+    
+    try {
+      _currentUserId = await TokenStorage().getUserId();
+      _remoteDescriptionSet = false;
+      _pendingCandidates.clear();
+      await _createPeerConnection();
+      _isInitialized = true;
+      return true;
+    } catch (e) {
+      onError?.call('初始化通话失败: $e');
+      return false;
+    }
   }
   
   Future<void> _createPeerConnection() async {
@@ -114,72 +148,89 @@ class CallService {
     };
   }
   
-  Future<void> startCall(String roomId, bool video, String conversationId) async {
-    _currentRoomId = roomId;
-    _remoteDescriptionSet = false;
-    
-    _localStream = await _getUserMedia(video);
-    
-    for (var track in _localStream!.getTracks()) {
-      _peerConnection?.addTrack(track, _localStream!);
+  Future<bool> startCall(String roomId, bool video, String conversationId) async {
+    try {
+      _currentRoomId = roomId;
+      _remoteDescriptionSet = false;
+      
+      _localStream = await _getUserMedia(video);
+      if (_localStream == null) return false;
+      
+      for (var track in _localStream!.getTracks()) {
+        _peerConnection?.addTrack(track, _localStream!);
+      }
+      
+      final offer = await _peerConnection!.createOffer({
+        'offerToReceiveAudio': true,
+        'offerToReceiveVideo': video,
+      });
+      await _peerConnection!.setLocalDescription(offer);
+      
+      WebSocketService().send({
+        'event': 'call:offer',
+        'data': {
+          'room_id': roomId,
+          'conversation_id': conversationId,
+          'is_video': video,
+          'type': 'offer',
+          'sdp': offer.sdp,
+        },
+      });
+      
+      print('Offer sent');
+      return true;
+    } catch (e) {
+      onError?.call('发起通话失败: $e');
+      return false;
     }
-    
-    final offer = await _peerConnection!.createOffer({
-      'offerToReceiveAudio': true,
-      'offerToReceiveVideo': video,
-    });
-    await _peerConnection!.setLocalDescription(offer);
-    
-    WebSocketService().send({
-      'event': 'call:offer',
-      'data': {
-        'room_id': roomId,
-        'conversation_id': conversationId,
-        'is_video': video,
-        'type': 'offer',
-        'sdp': offer.sdp,
-      },
-    });
-    
-    print('Offer sent');
   }
   
-  Future<void> answerCall(String roomId, bool video, Map<String, dynamic> offerData) async {
-    _currentRoomId = roomId;
-    _remoteDescriptionSet = false;
-    
-    final sdp = offerData['sdp'] as String?;
-    if (sdp == null) return;
-    
-    _localStream = await _getUserMedia(video);
-    
-    for (var track in _localStream!.getTracks()) {
-      _peerConnection?.addTrack(track, _localStream!);
+  Future<bool> answerCall(String roomId, bool video, Map<String, dynamic> offerData) async {
+    try {
+      _currentRoomId = roomId;
+      _remoteDescriptionSet = false;
+      
+      final sdp = offerData['sdp'] as String?;
+      if (sdp == null) {
+        onError?.call('无效的通话请求');
+        return false;
+      }
+      
+      _localStream = await _getUserMedia(video);
+      if (_localStream == null) return false;
+      
+      for (var track in _localStream!.getTracks()) {
+        _peerConnection?.addTrack(track, _localStream!);
+      }
+      
+      await _peerConnection!.setRemoteDescription(RTCSessionDescription(sdp, 'offer'));
+      _remoteDescriptionSet = true;
+      print('Remote offer set');
+      
+      _addPendingCandidates();
+      
+      final answer = await _peerConnection!.createAnswer({
+        'offerToReceiveAudio': true,
+        'offerToReceiveVideo': video,
+      });
+      await _peerConnection!.setLocalDescription(answer);
+      
+      WebSocketService().send({
+        'event': 'call:answer',
+        'data': {
+          'room_id': roomId,
+          'type': 'answer',
+          'sdp': answer.sdp,
+          'target_user_id': offerData['sender_id'],
+        },
+      });
+      
+      print('Answer sent');
+      return true;
+    } catch (e) {
+      onError?.call('接听通话失败: $e');
+      return false;
     }
-    
-    await _peerConnection!.setRemoteDescription(RTCSessionDescription(sdp, 'offer'));
-    _remoteDescriptionSet = true;
-    print('Remote offer set');
-    
-    _addPendingCandidates();
-    
-    final answer = await _peerConnection!.createAnswer({
-      'offerToReceiveAudio': true,
-      'offerToReceiveVideo': video,
-    });
-    await _peerConnection!.setLocalDescription(answer);
-    
-    WebSocketService().send({
-      'event': 'call:answer',
-      'data': {
-        'room_id': roomId,
-        'type': 'answer',
-        'sdp': answer.sdp,
-        'target_user_id': offerData['sender_id'],
-      },
-    });
-    
-    print('Answer sent');
   }
   
   Future<void> handleSignal(Map<String, dynamic> message) async {
@@ -271,22 +322,27 @@ class CallService {
     _pendingCandidates.clear();
   }
   
-  Future<MediaStream> _getUserMedia(bool video) async {
-    final constraints = <String, dynamic>{
-      'audio': {
-        'echoCancellation': true,
-        'noiseSuppression': true,
-        'autoGainControl': true,
-      },
-      'video': video ? {
-        'facingMode': 'user',
-        'width': {'ideal': 640},
-        'height': {'ideal': 480},
-      } : false,
-    };
-    final stream = await navigator.mediaDevices.getUserMedia(constraints);
-    print('Got media stream: audio=${stream.getAudioTracks().length}, video=${stream.getVideoTracks().length}');
-    return stream;
+  Future<MediaStream?> _getUserMedia(bool video) async {
+    try {
+      final constraints = <String, dynamic>{
+        'audio': {
+          'echoCancellation': true,
+          'noiseSuppression': true,
+          'autoGainControl': true,
+        },
+        'video': video ? {
+          'facingMode': 'user',
+          'width': {'ideal': 640},
+          'height': {'ideal': 480},
+        } : false,
+      };
+      final stream = await navigator.mediaDevices.getUserMedia(constraints);
+      print('Got media stream: audio=${stream.getAudioTracks().length}, video=${stream.getVideoTracks().length}');
+      return stream;
+    } catch (e) {
+      onError?.call('无法获取媒体设备: $e');
+      return null;
+    }
   }
   
   void toggleMicrophone(bool enabled) {
@@ -316,6 +372,7 @@ class CallService {
     _currentRoomId = null;
     _remoteDescriptionSet = false;
     _pendingCandidates.clear();
+    _isInitialized = false;
   }
   
   MediaStream? get localStream => _localStream;
