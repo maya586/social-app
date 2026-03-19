@@ -67,13 +67,28 @@ class _ProfileTabPageState extends ConsumerState<ProfileTabPage> {
       children: [
         _buildProfileHeader(context, user),
         const SizedBox(height: 16),
-        _buildAccountSection(context, user),
-        const SizedBox(height: 16),
-        _buildSettingsSection(context),
-        const SizedBox(height: 16),
-        _buildOtherSection(context),
-        const SizedBox(height: 24),
-        _buildLogoutButton(context),
+        if (user != null) ...[
+          _buildAccountSection(context, user),
+          const SizedBox(height: 16),
+          _buildSettingsSection(context),
+          const SizedBox(height: 16),
+          _buildOtherSection(context),
+          const SizedBox(height: 24),
+          _buildLogoutButton(context),
+        ] else ...[
+          const SizedBox(height: 32),
+          Center(
+            child: Column(
+              children: [
+                const Icon(Icons.person_outline, size: 64, color: Colors.white54),
+                const SizedBox(height: 16),
+                const Text('未登录', style: TextStyle(color: Colors.white54, fontSize: 18)),
+                const SizedBox(height: 24),
+                _buildLogoutButton(context),
+              ],
+            ),
+          ),
+        ],
         const SizedBox(height: 24),
         _buildVersionInfo(),
       ],
@@ -187,10 +202,14 @@ class _ProfileTabPageState extends ConsumerState<ProfileTabPage> {
   }
   
   Widget _buildLogoutButton(BuildContext context) {
+    final userAsync = ref.watch(userProfileProvider);
+    final isLoggedIn = userAsync.asData?.value != null;
+    
     return Container(
       height: 52,
       decoration: BoxDecoration(
-        border: Border.all(color: AppTheme.errorColor.withOpacity(0.5), width: 1.5),
+        color: isLoggedIn ? null : AppTheme.primaryColor,
+        border: isLoggedIn ? Border.all(color: AppTheme.errorColor.withOpacity(0.5), width: 1.5) : null,
         borderRadius: BorderRadius.circular(16),
       ),
       child: Material(
@@ -198,8 +217,15 @@ class _ProfileTabPageState extends ConsumerState<ProfileTabPage> {
         child: InkWell(
           onTap: () => _confirmLogout(context),
           borderRadius: BorderRadius.circular(16),
-          child: const Center(
-            child: Text('退出登录', style: TextStyle(color: AppTheme.errorColor, fontSize: 16, fontWeight: FontWeight.w600)),
+          child: Center(
+            child: Text(
+              isLoggedIn ? '退出登录' : '登录 / 注册',
+              style: TextStyle(
+                color: isLoggedIn ? AppTheme.errorColor : Colors.white,
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
           ),
         ),
       ),
@@ -522,6 +548,14 @@ class _ProfileTabPageState extends ConsumerState<ProfileTabPage> {
   }
   
   void _confirmLogout(BuildContext context) {
+    final userAsync = ref.watch(userProfileProvider);
+    final isLoggedIn = userAsync.asData?.value != null;
+    
+    if (!isLoggedIn) {
+      ref.read(routerProvider.notifier).goLogin();
+      return;
+    }
+    
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
