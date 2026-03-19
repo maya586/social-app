@@ -1,0 +1,5 @@
+172.18.0.1 - - [17/Mar/2026:08:33:58 +0000] "POST /plugin%3Awindow%7Cclose HTTP/1.1" 404 186 "http://tauri.localhost/" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36 Edg/145.0.0.0"
+172.18.0.1 - - [17/Mar/2026:09:38:36 +0000] "POST /plugin%3Awindow%7Cclose HTTP/1.1" 404 186 "http://tauri.localhost/" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36 Edg/145.0.0.0"
+172.18.0.1 - - [17/Mar/2026:11:46:55 +0000] "GET / HTTP/1.1" 404 186 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36 Edg/146.0.0.0"
+172.18.0.1 - - [17/Mar/2026:11:46:55 +0000] "GET /favicon.ico HTTP/1.1" 404 186 "http://192.168.43.253/" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36 Edg/146.0.0.0"
+172.18.0.1 - - [18/Mar/2026:14:07:03 +0000] "POST /plugin%3Awindow%7Cclose HTTP/1.1" 404 186 "http://tauri.localhost/" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36 Edg/145.0.0.0"

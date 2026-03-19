@@ -148,6 +148,7 @@ class _ContactsPageState extends ConsumerState<ContactsPage> {
           ...contacts.map((contact) => _ContactTile(
             contact: contact,
             onStartChat: () => _startChat(context, contact),
+            onClearChat: () => _clearChatForContact(contact),
           )),
         ],
       ],
@@ -342,6 +343,50 @@ class _ContactsPageState extends ConsumerState<ContactsPage> {
       }
     }
   }
+  
+  Future<void> _clearChatForContact(Contact contact) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.grey[900],
+        title: const Text('清空聊天记录', style: TextStyle(color: Colors.white)),
+        content: Text('确定要清空与 ${contact.getDisplayName()} 的聊天记录吗？', style: const TextStyle(color: Colors.white70)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消', style: TextStyle(color: Colors.white70)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('清空', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+    
+    if (confirmed != true) return;
+    
+    try {
+      final chatRepo = ref.read(chatRepositoryProvider);
+      final conversation = await chatRepo.createPrivateConversation(contact.contactId);
+      
+      if (conversation.id.isNotEmpty) {
+        await chatRepo.clearConversation(conversation.id);
+        ref.invalidate(conversationsProvider);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('聊天记录已清空')),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('清空失败: $e')),
+        );
+      }
+    }
+  }
 }
 
 class _PendingRequestTile extends StatelessWidget {
@@ -399,10 +444,12 @@ class _PendingRequestTile extends StatelessWidget {
 class _ContactTile extends StatelessWidget {
   final Contact contact;
   final VoidCallback? onStartChat;
+  final VoidCallback? onClearChat;
   
   const _ContactTile({
     required this.contact,
     this.onStartChat,
+    this.onClearChat,
   });
   
   @override
@@ -410,31 +457,65 @@ class _ContactTile extends StatelessWidget {
     final displayName = contact.getDisplayName();
     final subtitle = contact.contactUser?.phone ?? contact.contactId.substring(0, 8);
     
-    return GlassContainer(
-      margin: const EdgeInsets.symmetric(vertical: 4),
-      borderRadius: 16,
-      child: ListTile(
-        leading: CircleAvatar(
-          backgroundColor: AppTheme.primaryColor.withOpacity(0.8),
-          child: Text(
-            displayName.isNotEmpty ? displayName.substring(0, 1) : '?',
-            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+    return GestureDetector(
+      onSecondaryTapDown: (details) {
+        _showContextMenu(context, details);
+      },
+      child: GlassContainer(
+        margin: const EdgeInsets.symmetric(vertical: 4),
+        borderRadius: 16,
+        child: ListTile(
+          leading: CircleAvatar(
+            backgroundColor: AppTheme.primaryColor.withOpacity(0.8),
+            child: Text(
+              displayName.isNotEmpty ? displayName.substring(0, 1) : '?',
+              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+            ),
           ),
+          title: Text(displayName, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+          subtitle: Text(subtitle, style: TextStyle(color: Colors.white.withOpacity(0.7))),
+          trailing: Container(
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(colors: [AppTheme.primaryColor, AppTheme.secondaryColor]),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: IconButton(
+              icon: const Icon(Icons.chat, color: Colors.white),
+              onPressed: onStartChat,
+            ),
+          ),
+          onTap: onStartChat,
         ),
-        title: Text(displayName, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
-        subtitle: Text(subtitle, style: TextStyle(color: Colors.white.withOpacity(0.7))),
-        trailing: Container(
-          decoration: BoxDecoration(
-            gradient: const LinearGradient(colors: [AppTheme.primaryColor, AppTheme.secondaryColor]),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: IconButton(
-            icon: const Icon(Icons.chat, color: Colors.white),
-            onPressed: onStartChat,
-          ),
-        ),
-        onTap: onStartChat,
       ),
     );
+  }
+  
+  void _showContextMenu(BuildContext context, TapDownDetails details) {
+    final overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
+    final position = RelativeRect.fromRect(
+      Rect.fromLTWH(details.globalPosition.dx, details.globalPosition.dy, 0, 0),
+      Offset.zero & overlay.size,
+    );
+    
+    showMenu<String>(
+      context: context,
+      position: position,
+      items: [
+        const PopupMenuItem<String>(
+          value: 'clear',
+          child: Row(
+            children: [
+              Icon(Icons.delete_sweep, color: Colors.red),
+              SizedBox(width: 8),
+              Text('清空聊天记录'),
+            ],
+          ),
+        ),
+      ],
+    ).then((value) {
+      if (value == 'clear') {
+        onClearChat?.call();
+      }
+    });
   }
 }

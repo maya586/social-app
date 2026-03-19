@@ -272,3 +272,34 @@ func (h *MessageHandler) MarkAsRead(c *gin.Context) {
 
 	response.Success(c, nil)
 }
+
+// ClearConversation godoc
+// @Summary 清空会话消息
+// @Description 清空会话中的所有消息
+// @Tags 消息
+// @Security BearerAuth
+// @Produce json
+// @Param id path string true "会话ID"
+// @Success 200 {object} map[string]interface{} "清空成功"
+// @Failure 400 {object} map[string]string "参数错误"
+// @Router /messages/conversation/{id} [delete]
+func (h *MessageHandler) ClearConversation(c *gin.Context) {
+	userID := middleware.GetUserID(c).(uuid.UUID)
+	conversationID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		response.BadRequest(c, "Invalid conversation ID")
+		return
+	}
+
+	if err := h.messageService.ClearConversation(conversationID, userID); err != nil {
+		switch err {
+		case service.ErrNotMember:
+			response.Forbidden(c, err.Error())
+		default:
+			response.InternalError(c, "Failed to clear conversation")
+		}
+		return
+	}
+
+	response.Success(c, nil)
+}

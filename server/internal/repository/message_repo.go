@@ -1,10 +1,10 @@
 package repository
 
 import (
-	"time"
-	"github.com/google/uuid"
 	"github.com/example/social-app/server/internal/database"
 	"github.com/example/social-app/server/internal/model"
+	"github.com/google/uuid"
+	"time"
 )
 
 type MessageRepo struct{}
@@ -57,4 +57,8 @@ func (r *MessageRepo) GetUnreadCount(conversationID, userID uuid.UUID) (int64, e
 		Where("conversation_id = ? AND sender_id != ? AND status != ?", conversationID, userID, model.MessageStatusRead).
 		Count(&count).Error
 	return count, err
+}
+
+func (r *MessageRepo) DeleteByConversation(conversationID uuid.UUID) error {
+	return database.DB.Where("conversation_id = ?", conversationID).Delete(&model.Message{}).Error
 }

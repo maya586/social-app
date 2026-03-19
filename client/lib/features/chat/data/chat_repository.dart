@@ -61,6 +61,10 @@ class ChatRepository {
     await _api.delete('/messages/$messageId');
   }
   
+  Future<void> clearConversation(String conversationId) async {
+    await _api.delete('/messages/conversation/$conversationId');
+  }
+  
   Future<Conversation> createPrivateConversation(String contactId) async {
     if (contactId.isEmpty) {
       throw Exception('联系人ID不能为空');

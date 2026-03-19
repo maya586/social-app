@@ -311,6 +311,23 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     }
   }
   
+  Future<void> _deleteMessage(String messageId) async {
+    try {
+      await ref.read(messagesProvider(widget.conversationId).notifier).deleteMessage(messageId);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('消息已删除')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('删除失败: $e')),
+        );
+      }
+    }
+  }
+  
   void _startCall(bool isVideo) {
     final roomId = const Uuid().v4();
     
@@ -385,6 +402,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                             message: messages[index],
                             currentUserId: _currentUserId,
                             maxWidth: constraints.maxWidth,
+                            onDelete: _deleteMessage,
                           );
                         },
                       );
@@ -510,8 +528,9 @@ class _MessageBubble extends StatelessWidget {
   final Message message;
   final String? currentUserId;
   final double maxWidth;
+  final Function(String)? onDelete;
   
-  const _MessageBubble({required this.message, this.currentUserId, this.maxWidth = 400});
+  const _MessageBubble({required this.message, this.currentUserId, this.maxWidth = 400, this.onDelete});
   
   @override
   Widget build(BuildContext context) {
@@ -519,7 +538,13 @@ class _MessageBubble extends StatelessWidget {
     final timeFormat = DateFormat('HH:mm');
     final bubbleMaxWidth = maxWidth > 600 ? 450.0 : maxWidth * 0.75;
     
-    return Align(
+    return GestureDetector(
+      onSecondaryTapDown: (details) {
+        if (isMe && onDelete != null) {
+          _showContextMenu(context, details, message.id);
+        }
+      },
+      child: Align(
       alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
         margin: const EdgeInsets.symmetric(vertical: 4),
@@ -701,6 +726,36 @@ class _MessageBubble extends StatelessWidget {
           ],
         ),
       ),
+    ),
     );
+  }
+  
+  void _showContextMenu(BuildContext context, TapDownDetails details, String messageId) {
+    final overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
+    final position = RelativeRect.fromRect(
+      Rect.fromLTWH(details.globalPosition.dx, details.globalPosition.dy, 0, 0),
+      Offset.zero & overlay.size,
+    );
+    
+    showMenu<String>(
+      context: context,
+      position: position,
+      items: [
+        const PopupMenuItem<String>(
+          value: 'delete',
+          child: Row(
+            children: [
+              Icon(Icons.delete, color: Colors.red),
+              SizedBox(width: 8),
+              Text('删除消息'),
+            ],
+          ),
+        ),
+      ],
+    ).then((value) {
+      if (value == 'delete') {
+        onDelete?.call(messageId);
+      }
+    });
   }
 }

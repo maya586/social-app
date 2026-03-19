@@ -232,3 +232,15 @@ func (s *MessageService) GetUnreadCount(conversationID, userID uuid.UUID) (int64
 
 	return s.messageRepo.GetUnreadCount(conversationID, userID)
 }
+
+func (s *MessageService) ClearConversation(conversationID, userID uuid.UUID) error {
+	isMember, err := s.conversationRepo.IsMember(conversationID, userID)
+	if err != nil {
+		return err
+	}
+	if !isMember {
+		return ErrNotMember
+	}
+
+	return s.messageRepo.DeleteByConversation(conversationID)
+}

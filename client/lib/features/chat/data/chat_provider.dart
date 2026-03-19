@@ -94,4 +94,21 @@ class MessagesNotifier extends StateNotifier<AsyncValue<List<Message>>> {
       state = AsyncValue.data([...messages, message]);
     });
   }
+  
+  Future<void> deleteMessage(String messageId) async {
+    try {
+      await _repository.recallMessage(messageId);
+      state.whenData((messages) {
+        state = AsyncValue.data(messages.where((m) => m.id != messageId).toList());
+      });
+    } catch (e) {
+      rethrow;
+    }
+  }
+  
+  Future<void> clearMessages() async {
+    state.whenData((messages) {
+      state = const AsyncValue.data([]);
+    });
+  }
 }

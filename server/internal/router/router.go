@@ -28,6 +28,11 @@ func Setup(r *gin.Engine, authService *service.AuthService, authHandler *handler
 			auth.POST("/refresh-token", authHandler.RefreshToken)
 		}
 
+		files := api.Group("/files")
+		{
+			files.GET("/:id", fileHandler.Download)
+		}
+
 		protected := api.Group("")
 		protected.Use(middleware.AuthMiddleware(authService))
 		protected.Use(middleware.UserRateLimit(300, time.Minute))
@@ -48,15 +53,15 @@ func Setup(r *gin.Engine, authService *service.AuthService, authHandler *handler
 				messages.GET("/conversation/:id", messageHandler.List)
 				messages.POST("", messageHandler.Send)
 				messages.DELETE("/:id", messageHandler.Recall)
+				messages.DELETE("/conversation/:id", messageHandler.ClearConversation)
 				messages.PUT("/conversation/:id/read", messageHandler.MarkAsRead)
 			}
 
-			files := protected.Group("/files")
-			files.Use(middleware.UserRateLimit(20, time.Hour))
+			protectedFiles := protected.Group("/files")
+			protectedFiles.Use(middleware.UserRateLimit(20, time.Hour))
 			{
-				files.POST("/upload", fileHandler.Upload)
-				files.GET("/:id", fileHandler.Download)
-				files.DELETE("/:id", fileHandler.Delete)
+				protectedFiles.POST("/upload", fileHandler.Upload)
+				protectedFiles.DELETE("/:id", fileHandler.Delete)
 			}
 
 			conversations := protected.Group("/conversations")
