@@ -68,13 +68,11 @@ func (h *FileHandler) Download(c *gin.Context) {
 		return
 	}
 
-	parts := strings.Split(objectName, "/")
-	if len(parts) >= 2 {
-		objectName = strings.Join(parts[1:], "/")
-	}
+	log.Printf("Downloading file: %s", objectName)
 
 	object, err := storage.GetFile(context.Background(), objectName)
 	if err != nil {
+		log.Printf("File not found: %s, error: %v", objectName, err)
 		response.NotFound(c, "File not found")
 		return
 	}
@@ -88,7 +86,7 @@ func (h *FileHandler) Download(c *gin.Context) {
 
 	c.Header("Content-Type", info.ContentType)
 	c.Header("Content-Length", strconv.FormatInt(info.Size, 10))
-	c.Header("Content-Disposition", "attachment; filename="+objectName)
+	c.Header("Content-Disposition", "inline; filename="+objectName)
 
 	_, err = io.Copy(c.Writer, object)
 	if err != nil {

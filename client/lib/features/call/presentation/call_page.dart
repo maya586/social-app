@@ -210,10 +210,18 @@ class _CallPageState extends ConsumerState<CallPage> {
       
       if (_localRenderer != null && _callService != null) {
         try {
-          _localRenderer!.srcObject = _callService!.localStream;
-          _log('Local stream set to renderer');
-        } catch (e) {
+          final stream = _callService!.localStream;
+          if (stream != null) {
+            _localRenderer!.srcObject = stream;
+            _log('Local stream set to renderer: ${stream.id}');
+            _log('Video tracks: ${stream.getVideoTracks().length}');
+            _log('Audio tracks: ${stream.getAudioTracks().length}');
+          } else {
+            _log('WARNING: localStream is null');
+          }
+        } catch (e, stack) {
           _log('Error setting local stream: $e');
+          _log('Stack: $stack');
         }
       }
       

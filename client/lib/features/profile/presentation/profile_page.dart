@@ -50,13 +50,8 @@ class _ProfileTabPageState extends ConsumerState<ProfileTabPage> {
       ),
       body: userAsync.when(
         data: (user) => _buildContent(context, user),
-        loading: () => const Center(child: CircularProgressIndicator(color: Colors.white)),
-        error: (e, _) => Center(
-          child: GlassContainer(
-            padding: const EdgeInsets.all(24),
-            child: Text('加载失败: $e', style: const TextStyle(color: Colors.white)),
-          ),
-        ),
+        loading: () => _buildContent(context, null),
+        error: (e, _) => _buildContent(context, null),
       ),
     );
   }
