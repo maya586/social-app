@@ -27,14 +27,15 @@ class CallPage extends ConsumerStatefulWidget {
 }
 
 class _CallPageState extends ConsumerState<CallPage> {
-  final _callService = CallService();
-  final _localRenderer = RTCVideoRenderer();
-  final _remoteRenderer = RTCVideoRenderer();
+  CallService? _callService;
+  RTCVideoRenderer? _localRenderer;
+  RTCVideoRenderer? _remoteRenderer;
   bool _isMicrophoneEnabled = true;
   bool _isCameraEnabled = true;
   bool _isConnected = false;
   bool _dialogShown = false;
   bool _isLoading = true;
+  bool _isDisposed = false;
   String? _errorMessage;
   Duration _callDuration = Duration.zero;
   StreamSubscription? _wsSubscription;
@@ -48,9 +49,13 @@ class _CallPageState extends ConsumerState<CallPage> {
   
   Future<void> _initCall() async {
     try {
-      final hasPermission = await _callService.checkPermissions(widget.isVideo);
-      if (!hasPermission) {
-        if (mounted) {
+      _callService = CallService();
+      _localRenderer = RTCVideoRenderer();
+      _remoteRenderer = RTCVideoRenderer();
+      
+      final hasPermission = await _callService!.checkPermissions(widget.isVideo);
+      if (!hasPermission || _isDisposed) {
+        if (mounted && !_isDisposed) {
           setState(() {
             _isLoading = false;
             _errorMessage = '需要${widget.isVideo ? '摄像头和' : ''}麦克风权限才能通话';
@@ -59,11 +64,14 @@ class _CallPageState extends ConsumerState<CallPage> {
         return;
       }
       
-      await _localRenderer.initialize();
-      await _remoteRenderer.initialize();
-      final initialized = await _callService.initialize();
-      if (!initialized) {
-        if (mounted) {
+      await _localRenderer!.initialize();
+      await _remoteRenderer!.initialize();
+      
+      if (_isDisposed) return;
+      
+      final initialized = await _callService!.initialize();
+      if (!initialized || _isDisposed) {
+        if (mounted && !_isDisposed) {
           setState(() {
             _isLoading = false;
             _errorMessage = '初始化通话失败';
@@ -72,50 +80,52 @@ class _CallPageState extends ConsumerState<CallPage> {
         return;
       }
       
-      _callService.onRemoteStream = (stream) {
-        if (mounted) {
-          _remoteRenderer.srcObject = stream;
+      _callService!.onRemoteStream = (stream) {
+        if (mounted && !_isDisposed && _remoteRenderer != null) {
+          print('Received remote stream');
+          _remoteRenderer!.srcObject = stream;
           setState(() => _isConnected = true);
           _startDurationTimer();
         }
       };
       
-      _callService.onConnected = () {
-        if (mounted) {
+      _callService!.onConnected = () {
+        if (mounted && !_isDisposed) {
+          print('Call connected');
           setState(() => _isConnected = true);
           _startDurationTimer();
         }
       };
       
-      _callService.onCallEnded = () {
-        if (mounted && !_dialogShown) {
+      _callService!.onCallEnded = () {
+        if (mounted && !_dialogShown && !_isDisposed) {
           _showCallEndedDialog('通话已结束');
         }
       };
       
-      _callService.onError = (error) {
-        if (mounted) {
+      _callService!.onError = (error) {
+        if (mounted && !_isDisposed) {
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error)));
         }
       };
       
       _wsSubscription = WebSocketService().messages.listen((message) {
         final event = message['event'] as String?;
-        if (event?.startsWith('call:') == true) {
-          _callService.handleSignal(message);
+        if (event?.startsWith('call:') == true && _callService != null) {
+          _callService!.handleSignal(message);
         }
       });
       
       bool success = false;
       if (widget.isCaller) {
-        success = await _callService.startCall(widget.roomId, widget.isVideo, widget.conversationId ?? '');
+        success = await _callService!.startCall(widget.roomId, widget.isVideo, widget.conversationId ?? '');
       } else if (widget.offerData != null) {
-        success = await _callService.answerCall(widget.roomId, widget.isVideo, widget.offerData!);
+        success = await _callService!.answerCall(widget.roomId, widget.isVideo, widget.offerData!);
       } else {
         success = true;
       }
       
-      if (!success && mounted) {
+      if (!success && mounted && !_isDisposed) {
         setState(() {
           _isLoading = false;
           _errorMessage = '无法建立通话连接';
@@ -123,12 +133,15 @@ class _CallPageState extends ConsumerState<CallPage> {
         return;
       }
       
-      _localRenderer.srcObject = _callService.localStream;
-      if (mounted) {
+      if (_localRenderer != null && _callService != null) {
+        _localRenderer!.srcObject = _callService!.localStream;
+      }
+      if (mounted && !_isDisposed) {
         setState(() => _isLoading = false);
       }
     } catch (e) {
-      if (mounted) {
+      print('Init call error: $e');
+      if (mounted && !_isDisposed) {
         setState(() {
           _isLoading = false;
           _errorMessage = '通话初始化失败: $e';
@@ -140,15 +153,17 @@ class _CallPageState extends ConsumerState<CallPage> {
   void _startDurationTimer() {
     _durationTimer?.cancel();
     _durationTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (mounted) {
+      if (mounted && !_isDisposed) {
         setState(() => _callDuration += const Duration(seconds: 1));
       }
     });
   }
   
   void _showCallEndedDialog(String reason) {
-    if (_dialogShown) return;
+    if (_dialogShown || _isDisposed) return;
     _dialogShown = true;
+    
+    if (!mounted) return;
     
     showDialog(
       context: context,
@@ -172,13 +187,20 @@ class _CallPageState extends ConsumerState<CallPage> {
   
   @override
   void dispose() {
+    _isDisposed = true;
     _durationTimer?.cancel();
     _wsSubscription?.cancel();
-    _localRenderer.srcObject = null;
-    _remoteRenderer.srcObject = null;
-    _callService.endCall();
-    _localRenderer.dispose();
-    _remoteRenderer.dispose();
+    
+    try {
+      _localRenderer?.srcObject = null;
+      _remoteRenderer?.srcObject = null;
+      _callService?.endCall();
+      _localRenderer?.dispose();
+      _remoteRenderer?.dispose();
+    } catch (e) {
+      print('Dispose error: $e');
+    }
+    
     super.dispose();
   }
   
@@ -228,9 +250,9 @@ class _CallPageState extends ConsumerState<CallPage> {
       backgroundColor: Colors.black,
       body: Stack(
         children: [
-          if (widget.isVideo) ...[
+          if (widget.isVideo && _remoteRenderer != null) ...[
             Positioned.fill(
-              child: RTCVideoView(_remoteRenderer, objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover),
+              child: RTCVideoView(_remoteRenderer!, objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover),
             ),
             Positioned(
               top: 60,
@@ -244,7 +266,9 @@ class _CallPageState extends ConsumerState<CallPage> {
                 ),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(12),
-                  child: RTCVideoView(_localRenderer, mirror: true),
+                  child: _localRenderer != null 
+                    ? RTCVideoView(_localRenderer!, mirror: true)
+                    : const SizedBox(),
                 ),
               ),
             ),
@@ -302,7 +326,7 @@ class _CallPageState extends ConsumerState<CallPage> {
                   label: _isMicrophoneEnabled ? '静音' : '取消静音',
                   onPressed: () {
                     setState(() => _isMicrophoneEnabled = !_isMicrophoneEnabled);
-                    _callService.toggleMicrophone(_isMicrophoneEnabled);
+                    _callService?.toggleMicrophone(_isMicrophoneEnabled);
                   },
                 ),
                 _buildControlButton(
@@ -352,6 +376,8 @@ class _CallPageState extends ConsumerState<CallPage> {
   }
   
   void _showEndCallDialog() {
+    if (_isDisposed || !mounted) return;
+    
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -376,8 +402,11 @@ class _CallPageState extends ConsumerState<CallPage> {
   }
   
   void _endCall() {
+    if (_isDisposed) return;
     _dialogShown = true;
-    _callService.notifyCallEnd();
-    Navigator.pop(context);
+    _callService?.notifyCallEnd();
+    if (mounted) {
+      Navigator.pop(context);
+    }
   }
 }

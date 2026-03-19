@@ -7,11 +7,13 @@ import '../../../core/storage/token_storage.dart';
 class CallService {
   RTCPeerConnection? _peerConnection;
   MediaStream? _localStream;
+  MediaStream? _remoteStream;
   String? _currentRoomId;
   String? _currentUserId;
   bool _remoteDescriptionSet = false;
   final List<Map<String, dynamic>> _pendingCandidates = [];
   bool _isInitialized = false;
+  bool _isEnded = false;
   
   static bool useTurnServer = false;
   
@@ -50,10 +52,12 @@ class CallService {
       _currentUserId = await TokenStorage().getUserId();
       _remoteDescriptionSet = false;
       _pendingCandidates.clear();
+      _isEnded = false;
       await _createPeerConnection();
       _isInitialized = true;
       return true;
     } catch (e) {
+      print('Initialize error: $e');
       onError?.call('初始化通话失败: $e');
       return false;
     }
@@ -78,34 +82,28 @@ class CallService {
           'username': 'openrelayproject',
           'credential': 'openrelayproject',
         },
-        {
-          'urls': 'turn:openrelay.metered.ca:443',
-          'username': 'openrelayproject',
-          'credential': 'openrelayproject',
-        },
-        {
-          'urls': 'turn:openrelay.metered.ca:443?transport=tcp',
-          'username': 'openrelayproject',
-          'credential': 'openrelayproject',
-        },
       ]);
     }
     
     _peerConnection = await createPeerConnection(config);
     
     _peerConnection?.onIceCandidate = (candidate) {
-      if (_currentRoomId != null && candidate.candidate != null) {
-        WebSocketService().send({
-          'event': 'call:ice-candidate',
-          'data': {
-            'room_id': _currentRoomId,
-            'candidate': {
-              'candidate': candidate.candidate,
-              'sdpMid': candidate.sdpMid,
-              'sdpMLineIndex': candidate.sdpMLineIndex,
+      if (_currentRoomId != null && candidate.candidate != null && !_isEnded) {
+        try {
+          WebSocketService().send({
+            'event': 'call:ice-candidate',
+            'data': {
+              'room_id': _currentRoomId,
+              'candidate': {
+                'candidate': candidate.candidate,
+                'sdpMid': candidate.sdpMid,
+                'sdpMLineIndex': candidate.sdpMLineIndex,
+              },
             },
-          },
-        });
+          });
+        } catch (e) {
+          print('Error sending ICE candidate: $e');
+        }
       }
     };
     
@@ -119,13 +117,17 @@ class CallService {
           state == RTCIceConnectionState.RTCIceConnectionStateCompleted) {
         onConnected?.call();
       }
-      if (state == RTCIceConnectionState.RTCIceConnectionStateDisconnected ||
+      if (!_isEnded && (state == RTCIceConnectionState.RTCIceConnectionStateDisconnected ||
           state == RTCIceConnectionState.RTCIceConnectionStateFailed ||
-          state == RTCIceConnectionState.RTCIceConnectionStateClosed) {
+          state == RTCIceConnectionState.RTCIceConnectionStateClosed)) {
         Future.delayed(const Duration(milliseconds: 500), () {
-          if (_peerConnection?.iceConnectionState == RTCIceConnectionState.RTCIceConnectionStateFailed ||
-              _peerConnection?.iceConnectionState == RTCIceConnectionState.RTCIceConnectionStateDisconnected) {
-            onCallEnded?.call();
+          if (!_isEnded && _peerConnection != null) {
+            final currentState = _peerConnection?.iceConnectionState;
+            if (currentState == RTCIceConnectionState.RTCIceConnectionStateFailed ||
+                currentState == RTCIceConnectionState.RTCIceConnectionStateDisconnected) {
+              print('ICE connection lost, ending call');
+              onCallEnded?.call();
+            }
           }
         });
       }
@@ -133,18 +135,32 @@ class CallService {
     
     _peerConnection?.onTrack = (event) {
       print('onTrack: ${event.track.kind}, streams: ${event.streams.length}');
-      if (event.streams.isNotEmpty) {
+      if (event.streams.isNotEmpty && !_isEnded) {
+        _remoteStream = event.streams[0];
         onRemoteStream?.call(event.streams[0]);
+      } else if (event.track.kind == 'audio' || event.track.kind == 'video') {
+        print('Received ${event.track.kind} track without stream');
       }
     };
     
     _peerConnection?.onAddStream = (stream) {
       print('onAddStream: ${stream.id}');
-      onRemoteStream?.call(stream);
+      if (!_isEnded) {
+        _remoteStream = stream;
+        onRemoteStream?.call(stream);
+      }
     };
     
     _peerConnection?.onConnectionState = (state) {
       print('Peer connection state: $state');
+    };
+    
+    _peerConnection?.onAddTrack = (stream, track) {
+      print('onAddTrack: ${track.kind}');
+      if (!_isEnded) {
+        _remoteStream = stream;
+        onRemoteStream?.call(stream);
+      }
     };
   }
   
@@ -152,11 +168,20 @@ class CallService {
     try {
       _currentRoomId = roomId;
       _remoteDescriptionSet = false;
+      _isEnded = false;
       
       _localStream = await _getUserMedia(video);
-      if (_localStream == null) return false;
+      if (_localStream == null) {
+        onError?.call('无法获取本地媒体流');
+        return false;
+      }
+      
+      print('Local stream obtained: ${_localStream!.id}');
+      print('Audio tracks: ${_localStream!.getAudioTracks().length}');
+      print('Video tracks: ${_localStream!.getVideoTracks().length}');
       
       for (var track in _localStream!.getTracks()) {
+        print('Adding track: ${track.kind}');
         _peerConnection?.addTrack(track, _localStream!);
       }
       
@@ -165,6 +190,7 @@ class CallService {
         'offerToReceiveVideo': video,
       });
       await _peerConnection!.setLocalDescription(offer);
+      print('Local description set');
       
       WebSocketService().send({
         'event': 'call:offer',
@@ -180,6 +206,7 @@ class CallService {
       print('Offer sent');
       return true;
     } catch (e) {
+      print('startCall error: $e');
       onError?.call('发起通话失败: $e');
       return false;
     }
@@ -189,6 +216,7 @@ class CallService {
     try {
       _currentRoomId = roomId;
       _remoteDescriptionSet = false;
+      _isEnded = false;
       
       final sdp = offerData['sdp'] as String?;
       if (sdp == null) {
@@ -197,12 +225,19 @@ class CallService {
       }
       
       _localStream = await _getUserMedia(video);
-      if (_localStream == null) return false;
+      if (_localStream == null) {
+        onError?.call('无法获取本地媒体流');
+        return false;
+      }
+      
+      print('Local stream obtained: ${_localStream!.id}');
       
       for (var track in _localStream!.getTracks()) {
+        print('Adding track: ${track.kind}');
         _peerConnection?.addTrack(track, _localStream!);
       }
       
+      print('Setting remote description...');
       await _peerConnection!.setRemoteDescription(RTCSessionDescription(sdp, 'offer'));
       _remoteDescriptionSet = true;
       print('Remote offer set');
@@ -214,6 +249,7 @@ class CallService {
         'offerToReceiveVideo': video,
       });
       await _peerConnection!.setLocalDescription(answer);
+      print('Local answer set');
       
       WebSocketService().send({
         'event': 'call:answer',
@@ -228,78 +264,93 @@ class CallService {
       print('Answer sent');
       return true;
     } catch (e) {
+      print('answerCall error: $e');
       onError?.call('接听通话失败: $e');
       return false;
     }
   }
   
   Future<void> handleSignal(Map<String, dynamic> message) async {
-    final event = message['event'];
-    final rawData = message['data'];
-    
-    if (rawData == null) return;
-    
-    Map<String, dynamic>? data;
-    if (rawData is Map<String, dynamic>) {
-      data = rawData;
-    } else if (rawData is String) {
-      try {
-        data = jsonDecode(rawData) as Map<String, dynamic>;
-      } catch (e) {
-        return;
-      }
-    }
-    
-    if (data == null) return;
-    if (data['sender_id'] == _currentUserId) return;
-    
-    if (event == 'call:answer') {
-      final sdp = data['sdp'] as String?;
-      if (sdp != null && _peerConnection != null) {
-        print('Setting remote answer');
-        await _peerConnection!.setRemoteDescription(RTCSessionDescription(sdp, 'answer'));
-        _remoteDescriptionSet = true;
-        _addPendingCandidates();
-      }
-    }
-    
-    if (event == 'call:ice-candidate') {
-      final c = data['candidate'];
-      if (c != null) {
-        Map<String, dynamic> cm;
-        if (c is Map<String, dynamic>) {
-          cm = c;
-        } else if (c is String) {
-          try {
-            cm = jsonDecode(c) as Map<String, dynamic>;
-          } catch (e) {
-            return;
-          }
-        } else {
+    try {
+      final event = message['event'];
+      final rawData = message['data'];
+      
+      if (rawData == null || _isEnded) return;
+      
+      Map<String, dynamic>? data;
+      if (rawData is Map<String, dynamic>) {
+        data = rawData;
+      } else if (rawData is String) {
+        try {
+          data = jsonDecode(rawData) as Map<String, dynamic>;
+        } catch (e) {
+          print('Failed to decode signal data: $e');
           return;
         }
-        
-        if (_remoteDescriptionSet && _peerConnection != null) {
+      }
+      
+      if (data == null) return;
+      if (data['sender_id'] == _currentUserId) return;
+      
+      print('Handling signal: $event');
+      
+      if (event == 'call:answer') {
+        final sdp = data['sdp'] as String?;
+        if (sdp != null && _peerConnection != null && !_isEnded) {
+          print('Setting remote answer');
           try {
-            final candidate = RTCIceCandidate(
-              cm['candidate'],
-              cm['sdpMid'],
-              cm['sdpMLineIndex'],
-            );
-            await _peerConnection!.addCandidate(candidate);
-            print('ICE candidate added');
+            await _peerConnection!.setRemoteDescription(RTCSessionDescription(sdp, 'answer'));
+            _remoteDescriptionSet = true;
+            _addPendingCandidates();
           } catch (e) {
-            print('Error adding ICE candidate: $e');
+            print('Error setting remote answer: $e');
           }
-        } else {
-          _pendingCandidates.add(cm);
-          print('ICE candidate cached (${_pendingCandidates.length})');
         }
       }
-    }
-    
-    if (event == 'call:end' || event == 'call:leave') {
-      onCallEnded?.call();
+      
+      if (event == 'call:ice-candidate') {
+        final c = data['candidate'];
+        if (c != null && !_isEnded) {
+          Map<String, dynamic> cm;
+          if (c is Map<String, dynamic>) {
+            cm = c;
+          } else if (c is String) {
+            try {
+              cm = jsonDecode(c) as Map<String, dynamic>;
+            } catch (e) {
+              print('Failed to decode candidate: $e');
+              return;
+            }
+          } else {
+            return;
+          }
+          
+          if (_remoteDescriptionSet && _peerConnection != null) {
+            try {
+              final candidate = RTCIceCandidate(
+                cm['candidate'],
+                cm['sdpMid'],
+                cm['sdpMLineIndex'],
+              );
+              await _peerConnection!.addCandidate(candidate);
+              print('ICE candidate added');
+            } catch (e) {
+              print('Error adding ICE candidate: $e');
+            }
+          } else {
+            _pendingCandidates.add(cm);
+            print('ICE candidate cached (${_pendingCandidates.length})');
+          }
+        }
+      }
+      
+      if (event == 'call:end' || event == 'call:leave') {
+        if (!_isEnded) {
+          onCallEnded?.call();
+        }
+      }
+    } catch (e) {
+      print('handleSignal error: $e');
     }
   }
   
@@ -352,22 +403,37 @@ class CallService {
   }
   
   void notifyCallEnd() {
-    if (_currentRoomId != null) {
-      WebSocketService().send({
-        'event': 'call:end',
-        'data': {'room_id': _currentRoomId},
-      });
+    if (_currentRoomId != null && !_isEnded) {
+      try {
+        WebSocketService().send({
+          'event': 'call:end',
+          'data': {'room_id': _currentRoomId},
+        });
+      } catch (e) {
+        print('Error sending call:end: $e');
+      }
     }
   }
   
   Future<void> endCall() async {
-    for (var track in _localStream?.getTracks() ?? []) {
-      track.stop();
-    }
-    await _localStream?.dispose();
-    _localStream = null;
+    _isEnded = true;
     
-    await _peerConnection?.close();
+    try {
+      for (var track in _localStream?.getTracks() ?? []) {
+        track.stop();
+      }
+      await _localStream?.dispose();
+    } catch (e) {
+      print('Error disposing local stream: $e');
+    }
+    _localStream = null;
+    _remoteStream = null;
+    
+    try {
+      await _peerConnection?.close();
+    } catch (e) {
+      print('Error closing peer connection: $e');
+    }
     _peerConnection = null;
     _currentRoomId = null;
     _remoteDescriptionSet = false;
@@ -376,4 +442,5 @@ class CallService {
   }
   
   MediaStream? get localStream => _localStream;
+  MediaStream? get remoteStream => _remoteStream;
 }
