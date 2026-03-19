@@ -11,7 +11,7 @@ final conversationsProvider = StateNotifierProvider<ConversationsNotifier, Async
   final authState = ref.watch(authStateProvider);
   final isLoggedIn = authState.hasValue && authState.value != null;
   return ConversationsNotifier(ref.watch(chatRepositoryProvider), isLoggedIn);
-});
+}, dependencies: [authStateProvider]);
 
 class ConversationsNotifier extends StateNotifier<AsyncValue<List<Conversation>>> {
   final ChatRepository _repository;
