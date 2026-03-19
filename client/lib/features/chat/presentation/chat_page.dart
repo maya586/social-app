@@ -598,26 +598,39 @@ class _MessageBubble extends StatelessWidget {
               ClipRRect(
                 borderRadius: BorderRadius.circular(8),
                 child: message.mediaUrl != null
-                    ? Image.network(
-                        '${ApiConfig.baseUrl}${message.mediaUrl}',
-                        width: 200,
-                        height: 200,
-                        fit: BoxFit.cover,
-                        errorBuilder: (context, error, stackTrace) {
-                          return Container(
+                    ? Builder(
+                        builder: (context) {
+                          final imageUrl = '${ApiConfig.baseUrl}${message.mediaUrl}';
+                          print('Loading image: $imageUrl');
+                          return Image.network(
+                            imageUrl,
                             width: 200,
                             height: 200,
-                            color: Colors.grey[300],
-                            child: const Icon(Icons.broken_image, size: 50),
-                          );
-                        },
-                        loadingBuilder: (context, child, loadingProgress) {
-                          if (loadingProgress == null) return child;
-                          return Container(
-                            width: 200,
-                            height: 200,
-                            color: Colors.grey[200],
-                            child: const Center(child: CircularProgressIndicator()),
+                            fit: BoxFit.cover,
+                            errorBuilder: (context, error, stackTrace) {
+                              print('Image load error: $error');
+                              return Container(
+                                width: 200,
+                                height: 200,
+                                color: Colors.grey[300],
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    const Icon(Icons.broken_image, size: 50),
+                                    Text('加载失败', style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+                                  ],
+                                ),
+                              );
+                            },
+                            loadingBuilder: (context, child, loadingProgress) {
+                              if (loadingProgress == null) return child;
+                              return Container(
+                                width: 200,
+                                height: 200,
+                                color: Colors.grey[200],
+                                child: const Center(child: CircularProgressIndicator()),
+                              );
+                            },
                           );
                         },
                       )

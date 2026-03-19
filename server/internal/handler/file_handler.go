@@ -2,14 +2,16 @@ package handler
 
 import (
 	"context"
-	"io"
-	"strconv"
-	"strings"
-	"github.com/gin-gonic/gin"
+	"log"
+
 	"github.com/example/social-app/server/internal/middleware"
 	"github.com/example/social-app/server/internal/storage"
 	"github.com/example/social-app/server/pkg/response"
+	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"io"
+	"strconv"
+	"strings"
 )
 
 type FileHandler struct{}
@@ -20,7 +22,7 @@ func NewFileHandler() *FileHandler {
 
 func (h *FileHandler) Upload(c *gin.Context) {
 	_ = middleware.GetUserID(c).(uuid.UUID)
-	
+
 	file, header, err := c.Request.FormFile("file")
 	if err != nil {
 		response.BadRequest(c, "No file uploaded")
@@ -44,9 +46,12 @@ func (h *FileHandler) Upload(c *gin.Context) {
 
 	url, err := storage.UploadFile(context.Background(), objectName, file, header.Size, contentType)
 	if err != nil {
-		response.InternalError(c, "Failed to upload file")
+		log.Printf("Failed to upload file to storage: %v", err)
+		response.InternalError(c, "Failed to upload file: "+err.Error())
 		return
 	}
+
+	log.Printf("File uploaded successfully: %s", url)
 
 	response.Created(c, gin.H{
 		"url":      url,
