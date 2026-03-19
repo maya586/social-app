@@ -383,14 +383,26 @@ class CallService {
         },
         'video': video ? {
           'facingMode': 'user',
-          'width': {'ideal': 640},
-          'height': {'ideal': 480},
+          'width': {'ideal': 320, 'max': 640},
+          'height': {'ideal': 240, 'max': 480},
+          'frameRate': {'ideal': 15, 'max': 30},
         } : false,
       };
+      
+      print('Requesting media with constraints: $constraints');
+      
       final stream = await navigator.mediaDevices.getUserMedia(constraints);
-      print('Got media stream: audio=${stream.getAudioTracks().length}, video=${stream.getVideoTracks().length}');
+      print('Got media stream: ${stream.id}');
+      print('Audio tracks: ${stream.getAudioTracks().length}');
+      print('Video tracks: ${stream.getVideoTracks().length}');
+      
+      if (video && stream.getVideoTracks().isEmpty) {
+        print('Warning: No video track available');
+      }
+      
       return stream;
     } catch (e) {
+      print('getUserMedia error: $e');
       onError?.call('无法获取媒体设备: $e');
       return null;
     }

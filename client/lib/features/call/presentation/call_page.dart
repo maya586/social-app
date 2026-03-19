@@ -4,7 +4,9 @@ import 'package:flutter_webrtc/flutter_webrtc.dart';
 import '../data/call_service.dart';
 import '../../../core/network/websocket_service.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/services/network_permission_service.dart';
 import 'dart:async';
+import 'dart:io';
 
 class CallPage extends ConsumerStatefulWidget {
   final String roomId;
@@ -49,6 +51,13 @@ class _CallPageState extends ConsumerState<CallPage> {
   
   Future<void> _initCall() async {
     try {
+      if (Platform.isWindows) {
+        final firewallOk = await _checkFirewallPermission();
+        if (!firewallOk) {
+          return;
+        }
+      }
+      
       _callService = CallService();
       _localRenderer = RTCVideoRenderer();
       _remoteRenderer = RTCVideoRenderer();
@@ -157,6 +166,95 @@ class _CallPageState extends ConsumerState<CallPage> {
         setState(() => _callDuration += const Duration(seconds: 1));
       }
     });
+  }
+  
+  Future<bool> _checkFirewallPermission() async {
+    try {
+      final networkService = NetworkPermissionService();
+      
+      final hasNetwork = await networkService.checkAndRequestPermission();
+      if (hasNetwork) {
+        return true;
+      }
+      
+      final firewallExists = await networkService.checkFirewallRuleExists();
+      if (firewallExists) {
+        return true;
+      }
+      
+      if (!mounted || _isDisposed) return false;
+      
+      final shouldRequest = await showDialog<bool>(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => AlertDialog(
+          backgroundColor: Colors.grey[900],
+          title: const Text('防火墙授权', style: TextStyle(color: Colors.white)),
+          content: const Text(
+            '语音/视频通话需要防火墙权限才能正常工作。\n\n是否允许应用添加防火墙规则？\n（需要管理员权限）',
+            style: TextStyle(color: Colors.white70),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('取消', style: TextStyle(color: Colors.white70)),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context, true),
+              style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryColor),
+              child: const Text('允许'),
+            ),
+          ],
+        ),
+      );
+      
+      if (shouldRequest != true) {
+        if (mounted && !_isDisposed) {
+          setState(() {
+            _isLoading = false;
+            _errorMessage = '需要防火墙权限才能进行通话';
+          });
+        }
+        return false;
+      }
+      
+      final result = await networkService.requestFirewallPermission();
+      
+      if (!mounted || _isDisposed) return false;
+      
+      if (result.success) {
+        await showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            backgroundColor: Colors.grey[900],
+            title: const Text('授权成功', style: TextStyle(color: Colors.white)),
+            content: Text(
+              result.message,
+              style: const TextStyle(color: Colors.white70),
+            ),
+            actions: [
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                  Navigator.pop(context);
+                },
+                child: const Text('确定'),
+              ),
+            ],
+          ),
+        );
+        return false;
+      } else {
+        setState(() {
+          _isLoading = false;
+          _errorMessage = result.message;
+        });
+        return false;
+      }
+    } catch (e) {
+      print('Firewall check error: $e');
+      return true;
+    }
   }
   
   void _showCallEndedDialog(String reason) {
