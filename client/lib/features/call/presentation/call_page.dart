@@ -51,9 +51,13 @@ class _CallPageState extends ConsumerState<CallPage> {
   
   Future<void> _initCall() async {
     try {
+      print('=== Starting call initialization ===');
+      print('isVideo: ${widget.isVideo}, isCaller: ${widget.isCaller}');
+      
       if (Platform.isWindows) {
         final firewallOk = await _checkFirewallPermission();
         if (!firewallOk) {
+          print('Firewall permission denied');
           return;
         }
       }
@@ -62,8 +66,10 @@ class _CallPageState extends ConsumerState<CallPage> {
       _localRenderer = RTCVideoRenderer();
       _remoteRenderer = RTCVideoRenderer();
       
+      print('Checking permissions...');
       final hasPermission = await _callService!.checkPermissions(widget.isVideo);
       if (!hasPermission || _isDisposed) {
+        print('Permission denied');
         if (mounted && !_isDisposed) {
           setState(() {
             _isLoading = false;
@@ -73,13 +79,30 @@ class _CallPageState extends ConsumerState<CallPage> {
         return;
       }
       
-      await _localRenderer!.initialize();
-      await _remoteRenderer!.initialize();
+      print('Initializing renderers...');
+      try {
+        await _localRenderer!.initialize();
+        await _remoteRenderer!.initialize();
+      } catch (e) {
+        print('Renderer init error: $e');
+        if (mounted && !_isDisposed) {
+          setState(() {
+            _isLoading = false;
+            _errorMessage = '视频渲染器初始化失败：$e';
+          });
+        }
+        return;
+      }
       
-      if (_isDisposed) return;
+      if (_isDisposed) {
+        print('Disposed after renderer init');
+        return;
+      }
       
+      print('Initializing call service...');
       final initialized = await _callService!.initialize();
       if (!initialized || _isDisposed) {
+        print('Call service init failed');
         if (mounted && !_isDisposed) {
           setState(() {
             _isLoading = false;
@@ -89,30 +112,37 @@ class _CallPageState extends ConsumerState<CallPage> {
         return;
       }
       
+      print('Setting up callbacks...');
       _callService!.onRemoteStream = (stream) {
+        print('=== onRemoteStream callback ===');
         if (mounted && !_isDisposed && _remoteRenderer != null) {
-          print('Received remote stream');
-          _remoteRenderer!.srcObject = stream;
-          setState(() => _isConnected = true);
-          _startDurationTimer();
+          try {
+            _remoteRenderer!.srcObject = stream;
+            setState(() => _isConnected = true);
+            _startDurationTimer();
+          } catch (e) {
+            print('Error setting remote stream: $e');
+          }
         }
       };
       
       _callService!.onConnected = () {
+        print('=== onConnected callback ===');
         if (mounted && !_isDisposed) {
-          print('Call connected');
           setState(() => _isConnected = true);
           _startDurationTimer();
         }
       };
       
       _callService!.onCallEnded = () {
+        print('=== onCallEnded callback ===');
         if (mounted && !_dialogShown && !_isDisposed) {
           _showCallEndedDialog('通话已结束');
         }
       };
       
       _callService!.onError = (error) {
+        print('=== onError callback: $error ===');
         if (mounted && !_isDisposed) {
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error)));
         }
@@ -125,31 +155,55 @@ class _CallPageState extends ConsumerState<CallPage> {
         }
       });
       
+      print('Starting call: isCaller=${widget.isCaller}');
       bool success = false;
-      if (widget.isCaller) {
-        success = await _callService!.startCall(widget.roomId, widget.isVideo, widget.conversationId ?? '');
-      } else if (widget.offerData != null) {
-        success = await _callService!.answerCall(widget.roomId, widget.isVideo, widget.offerData!);
-      } else {
-        success = true;
+      try {
+        if (widget.isCaller) {
+          print('Calling startCall...');
+          success = await _callService!.startCall(widget.roomId, widget.isVideo, widget.conversationId ?? '');
+          print('startCall result: $success');
+        } else if (widget.offerData != null) {
+          print('Calling answerCall...');
+          success = await _callService!.answerCall(widget.roomId, widget.isVideo, widget.offerData!);
+          print('answerCall result: $success');
+        } else {
+          success = true;
+        }
+      } catch (e) {
+        print('Call start/answer error: $e');
+        if (mounted && !_isDisposed) {
+          setState(() {
+            _isLoading = false;
+            _errorMessage = '通话初始化失败: $e';
+          });
+        }
+        return;
       }
       
       if (!success && mounted && !_isDisposed) {
+        print('Call setup failed');
         setState(() {
           _isLoading = false;
-          _errorMessage = '无法建立通话连接';
+          _errorMessage = '无法建立通话连接，请检查摄像头和麦克风';
         });
         return;
       }
       
       if (_localRenderer != null && _callService != null) {
-        _localRenderer!.srcObject = _callService!.localStream;
+        try {
+          _localRenderer!.srcObject = _callService!.localStream;
+          print('Local stream set to renderer');
+        } catch (e) {
+          print('Error setting local stream: $e');
+        }
       }
+      
+      print('Call initialization complete');
       if (mounted && !_isDisposed) {
         setState(() => _isLoading = false);
       }
     } catch (e) {
-      print('Init call error: $e');
+      print('=== _initCall EXCEPTION: $e ===');
       if (mounted && !_isDisposed) {
         setState(() {
           _isLoading = false;
