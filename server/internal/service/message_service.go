@@ -113,11 +113,7 @@ func (s *MessageService) Recall(messageID, userID uuid.UUID) error {
 		return errors.New("not message owner")
 	}
 
-	if time.Since(message.CreatedAt) > 2*time.Minute {
-		return ErrRecallTimeout
-	}
-
-	return s.messageRepo.SoftDelete(messageID)
+	return s.messageRepo.Delete(messageID)
 }
 
 func (s *MessageService) ListConversations(userID uuid.UUID, limit, offset int) ([]model.ConversationWithDetails, error) {

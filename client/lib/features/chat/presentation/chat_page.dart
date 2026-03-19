@@ -319,6 +319,13 @@ class _ChatPageState extends ConsumerState<ChatPage> {
           const SnackBar(content: Text('消息已删除')),
         );
       }
+    } on DioException catch (e) {
+      if (mounted) {
+        final message = e.response?.data?['message'] ?? e.message ?? '未知错误';
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('删除失败: $message')),
+        );
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

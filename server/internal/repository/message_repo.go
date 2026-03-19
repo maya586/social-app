@@ -45,6 +45,10 @@ func (r *MessageRepo) SoftDelete(id uuid.UUID) error {
 		}).Error
 }
 
+func (r *MessageRepo) Delete(id uuid.UUID) error {
+	return database.DB.Delete(&model.Message{}, "id = ?", id).Error
+}
+
 func (r *MessageRepo) MarkAsRead(conversationID, userID uuid.UUID) error {
 	return database.DB.Model(&model.Message{}).
 		Where("conversation_id = ? AND sender_id != ?", conversationID, userID).
