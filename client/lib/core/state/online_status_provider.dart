@@ -20,6 +20,10 @@ class OnlineStatusNotifier extends StateNotifier<Map<String, bool>> {
       
       if (event == 'online_users') {
         final rawData = message['data'];
+        print('=== online_users event received ===');
+        print('rawData type: ${rawData.runtimeType}');
+        print('rawData: $rawData');
+        
         List<dynamic>? usersList;
         
         if (rawData is List) {
@@ -39,10 +43,11 @@ class OnlineStatusNotifier extends StateNotifier<Map<String, bool>> {
             final isOnline = user['is_online'] as bool?;
             if (userId != null && isOnline != null) {
               newState[userId] = isOnline;
+              print('Setting user $userId online status to $isOnline');
             }
           }
           state = newState;
-          print('Online users list received: ${usersList.length} users online');
+          print('Online users updated: ${newState.keys}');
         }
       } else if (event == 'user:status') {
         final data = message['data'] as Map<String, dynamic>?;
