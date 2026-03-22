@@ -1,19 +1,21 @@
 package router
 
 import (
+	"time"
+
 	"github.com/example/social-app/server/internal/handler"
 	"github.com/example/social-app/server/internal/middleware"
 	"github.com/example/social-app/server/internal/service"
 	"github.com/gin-gonic/gin"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
-	"time"
 )
 
 func Setup(r *gin.Engine, authService *service.AuthService, authHandler *handler.AuthHandler,
 	contactHandler *handler.ContactHandler, messageHandler *handler.MessageHandler,
 	fileHandler *handler.FileHandler, callHandler *handler.CallHandler,
-	userHandler *handler.UserHandler, wsHandler *handler.WSHandler) {
+	userHandler *handler.UserHandler, wsHandler *handler.WSHandler,
+	adminService *service.AdminService, adminHandler *handler.AdminHandler) {
 
 	r.Use(middleware.CORS())
 
@@ -88,6 +90,28 @@ func Setup(r *gin.Engine, authService *service.AuthService, authHandler *handler
 				users.PUT("/me", userHandler.UpdateProfile)
 			}
 		}
+	}
+
+	admin := api.Group("/admin")
+	{
+		admin.POST("/login", adminHandler.Login)
+	}
+
+	adminProtected := api.Group("/admin")
+	adminProtected.Use(middleware.AdminAuthMiddleware(adminService))
+	{
+		adminProtected.POST("/logout", adminHandler.Logout)
+		adminProtected.GET("/profile", adminHandler.GetProfile)
+		adminProtected.GET("/dashboard", adminHandler.GetDashboard)
+		adminProtected.GET("/monitor", adminHandler.GetMonitor)
+		adminProtected.GET("/monitor/stream", adminHandler.StreamMonitor)
+		adminProtected.GET("/users", adminHandler.GetUsers)
+		adminProtected.GET("/users/:id", adminHandler.GetUser)
+		adminProtected.PUT("/users/:id/status", adminHandler.UpdateUserStatus)
+		adminProtected.GET("/users/:id/chats", adminHandler.GetUserChats)
+		adminProtected.GET("/conversations/:id/messages", adminHandler.GetConversationMessages)
+		adminProtected.GET("/configs", adminHandler.GetConfigs)
+		adminProtected.PUT("/configs/:key", adminHandler.UpdateConfig)
 	}
 
 	r.GET("/ws", wsHandler.HandleWebSocket)

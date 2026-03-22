@@ -507,6 +507,230 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     }
   }
   
+  bool _canPreviewFile(String fileName) {
+    final ext = p.extension(fileName).toLowerCase();
+    const previewableExtensions = [
+      '.txt', '.json', '.xml', '.log', '.md', '.csv',
+      '.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp',
+      '.mp3', '.wav', '.ogg', '.m4a', '.aac',
+      '.mp4', '.webm',
+    ];
+    return previewableExtensions.contains(ext);
+  }
+
+  Future<void> _showFilePreview(String mediaUrl, String fileName, String messageId) async {
+    final ext = p.extension(fileName).toLowerCase();
+    
+    if (['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'].contains(ext)) {
+      _showImagePreview(mediaUrl);
+    } else if (['.mp3', '.wav', '.ogg', '.m4a', '.aac'].contains(ext)) {
+      _showAudioPreview(mediaUrl, fileName, messageId);
+    } else if (['.txt', '.json', '.xml', '.log', '.md', '.csv'].contains(ext)) {
+      _showTextPreview(mediaUrl, fileName);
+    } else if (['.mp4', '.webm'].contains(ext)) {
+      _showVideoPreview(mediaUrl, fileName);
+    } else {
+      _showDownloadConfirmDialog(mediaUrl, fileName);
+    }
+  }
+
+  void _showImagePreview(String mediaUrl) {
+    showDialog(
+      context: context,
+      barrierColor: Colors.black87,
+      builder: (context) => GestureDetector(
+        onTap: () => Navigator.pop(context),
+        child: Scaffold(
+          backgroundColor: Colors.transparent,
+          body: Center(
+            child: InteractiveViewer(
+              minScale: 0.5,
+              maxScale: 4.0,
+              child: Image.network(
+                '${ApiConfig.baseUrl}$mediaUrl',
+                fit: BoxFit.contain,
+                errorBuilder: (context, error, stackTrace) {
+                  return const Icon(Icons.broken_image, color: Colors.white, size: 50);
+                },
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showAudioPreview(String mediaUrl, String fileName, String messageId) {
+    showDialog(
+      context: context,
+      builder: (context) => _AudioPreviewDialog(
+        mediaUrl: mediaUrl,
+        fileName: fileName,
+      ),
+    );
+  }
+
+  Future<void> _showTextPreview(String mediaUrl, String fileName) async {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.grey[900],
+        title: Row(
+          children: [
+            const Icon(Icons.description, color: Colors.white),
+            const SizedBox(width: 8),
+            Expanded(child: Text(fileName, style: const TextStyle(color: Colors.white, fontSize: 16))),
+          ],
+        ),
+        content: const SizedBox(
+          width: 400,
+          height: 300,
+          child: Center(child: CircularProgressIndicator(color: Colors.white)),
+        ),
+      ),
+    );
+
+    try {
+      final response = await ApiClient().dio.get(
+        '${ApiConfig.baseUrl}$mediaUrl',
+        options: Options(responseType: ResponseType.plain),
+      );
+      
+      String content = response.data.toString();
+      if (content.length > 10000) {
+        content = content.substring(0, 10000) + '\n\n... (内容过长，已截断)';
+      }
+
+      if (mounted) {
+        Navigator.pop(context);
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            backgroundColor: Colors.grey[900],
+            title: Row(
+              children: [
+                const Icon(Icons.description, color: Colors.white),
+                const SizedBox(width: 8),
+                Expanded(child: Text(fileName, style: const TextStyle(color: Colors.white, fontSize: 16))),
+              ],
+            ),
+            content: SizedBox(
+              width: 500,
+              height: 400,
+              child: SingleChildScrollView(
+                child: SelectableText(
+                  content,
+                  style: const TextStyle(color: Colors.white70, fontFamily: 'monospace', fontSize: 13),
+                ),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('关闭', style: TextStyle(color: Colors.white70)),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                  _downloadFile(mediaUrl, fileName);
+                },
+                child: const Text('下载'),
+              ),
+            ],
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('预览失败: $e')),
+        );
+        _showDownloadConfirmDialog(mediaUrl, fileName);
+      }
+    }
+  }
+
+  void _showVideoPreview(String mediaUrl, String fileName) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.grey[900],
+        title: Row(
+          children: [
+            const Icon(Icons.videocam, color: Colors.white),
+            const SizedBox(width: 8),
+            Expanded(child: Text(fileName, style: const TextStyle(color: Colors.white, fontSize: 16))),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 300,
+              height: 200,
+              decoration: BoxDecoration(
+                color: Colors.black26,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Center(
+                child: Icon(Icons.play_circle_outline, color: Colors.white54, size: 64),
+              ),
+            ),
+            const SizedBox(height: 16),
+            const Text('视频预览功能开发中', style: TextStyle(color: Colors.white70)),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('关闭', style: TextStyle(color: Colors.white70)),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _downloadFile(mediaUrl, fileName);
+            },
+            child: const Text('下载'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showDownloadConfirmDialog(String mediaUrl, String fileName) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.grey[900],
+        title: const Text('下载文件', style: TextStyle(color: Colors.white)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('无法预览此文件类型', style: TextStyle(color: Colors.white.withOpacity(0.7))),
+            const SizedBox(height: 8),
+            Text('文件名: $fileName', style: const TextStyle(color: Colors.white)),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('取消', style: TextStyle(color: Colors.white70)),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _downloadFile(mediaUrl, fileName);
+            },
+            child: const Text('下载'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _downloadFile(String mediaUrl, String fileName) async {
     try {
       final directory = await getDownloadsDirectory();
@@ -656,6 +880,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                             onDelete: _deleteMessage,
                             onPlayVoice: _playVoiceMessage,
                             onDownloadFile: _downloadFile,
+                            onPreviewFile: _showFilePreview,
                             isPlaying: _isPlaying,
                             playingMessageId: _playingMessageId,
                           );
@@ -808,6 +1033,7 @@ class _MessageBubble extends StatelessWidget {
   final Function(String)? onDelete;
   final Function(String, String)? onPlayVoice;
   final Function(String, String)? onDownloadFile;
+  final Function(String, String, String)? onPreviewFile;
   final bool isPlaying;
   final String? playingMessageId;
   
@@ -818,6 +1044,7 @@ class _MessageBubble extends StatelessWidget {
     this.onDelete,
     this.onPlayVoice,
     this.onDownloadFile,
+    this.onPreviewFile,
     this.isPlaying = false,
     this.playingMessageId,
   });
@@ -953,10 +1180,8 @@ class _MessageBubble extends StatelessWidget {
             else if (message.type == 'video')
               GestureDetector(
                 onTap: () {
-                  if (message.mediaUrl != null) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('视频播放功能开发中')),
-                    );
+                  if (message.mediaUrl != null && onPreviewFile != null) {
+                    onPreviewFile!(message.mediaUrl!, message.content ?? 'video', message.id);
                   }
                 },
                 child: Container(
@@ -982,34 +1207,38 @@ class _MessageBubble extends StatelessWidget {
                 ),
               )
             else if (message.type == 'audio')
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.audiotrack, color: Colors.white),
-                    const SizedBox(width: 8),
-                    Text(
-                      message.content ?? '音频',
-                      style: const TextStyle(color: Colors.white),
-                    ),
-                  ],
+              GestureDetector(
+                onTap: () {
+                  if (message.mediaUrl != null && onPreviewFile != null) {
+                    onPreviewFile!(message.mediaUrl!, message.content ?? 'audio', message.id);
+                  }
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.audiotrack, color: Colors.white),
+                      const SizedBox(width: 8),
+                      Text(
+                        message.content ?? '音频',
+                        style: const TextStyle(color: Colors.white),
+                      ),
+                      const SizedBox(width: 8),
+                      const Icon(Icons.play_arrow, color: Colors.white54, size: 16),
+                    ],
+                  ),
                 ),
               )
             else if (message.type == 'file')
               GestureDetector(
                 onTap: () {
-                  if (message.mediaUrl != null && onDownloadFile != null) {
-                    onDownloadFile!(message.mediaUrl!, message.content ?? 'file');
-                  }
-                },
-                onDoubleTap: () {
-                  if (message.mediaUrl != null && onDownloadFile != null) {
-                    onDownloadFile!(message.mediaUrl!, message.content ?? 'file');
+                  if (message.mediaUrl != null && onPreviewFile != null) {
+                    onPreviewFile!(message.mediaUrl!, message.content ?? 'file', message.id);
                   }
                 },
                 child: Container(
@@ -1032,7 +1261,7 @@ class _MessageBubble extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(width: 8),
-                      const Icon(Icons.download, color: Colors.white54, size: 16),
+                      const Icon(Icons.visibility, color: Colors.white54, size: 16),
                     ],
                   ),
                 ),
@@ -1110,5 +1339,148 @@ class _MessageBubble extends StatelessWidget {
         onDelete?.call(messageId);
       }
     });
+  }
+}
+
+class _AudioPreviewDialog extends StatefulWidget {
+  final String mediaUrl;
+  final String fileName;
+  
+  const _AudioPreviewDialog({
+    required this.mediaUrl,
+    required this.fileName,
+  });
+  
+  @override
+  State<_AudioPreviewDialog> createState() => _AudioPreviewDialogState();
+}
+
+class _AudioPreviewDialogState extends State<_AudioPreviewDialog> {
+  final _audioPlayer = AudioPlayer();
+  bool _isPlaying = false;
+  Duration _duration = Duration.zero;
+  Duration _position = Duration.zero;
+  bool _isLoading = true;
+  String? _error;
+  
+  @override
+  void initState() {
+    super.initState();
+    _initPlayer();
+  }
+  
+  Future<void> _initPlayer() async {
+    try {
+      await _audioPlayer.setUrl('${ApiConfig.baseUrl}${widget.mediaUrl}');
+      setState(() => _isLoading = false);
+      
+      _audioPlayer.durationStream.listen((duration) {
+        if (mounted) setState(() => _duration = duration ?? Duration.zero);
+      });
+      
+      _audioPlayer.positionStream.listen((position) {
+        if (mounted) setState(() => _position = position);
+      });
+      
+      _audioPlayer.playerStateStream.listen((state) {
+        if (mounted) {
+          setState(() => _isPlaying = state.playing);
+          if (state.processingState == ProcessingState.completed) {
+            setState(() => _isPlaying = false);
+            _audioPlayer.seek(Duration.zero);
+          }
+        }
+      });
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _error = e.toString();
+        });
+      }
+    }
+  }
+  
+  @override
+  void dispose() {
+    _audioPlayer.dispose();
+    super.dispose();
+  }
+  
+  String _formatDuration(Duration d) {
+    final minutes = d.inMinutes;
+    final seconds = d.inSeconds.remainder(60);
+    return '$minutes:${seconds.toString().padLeft(2, '0')}';
+  }
+  
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: Colors.grey[900],
+      title: Row(
+        children: [
+          const Icon(Icons.audiotrack, color: Colors.white),
+          const SizedBox(width: 8),
+          Expanded(child: Text(widget.fileName, style: const TextStyle(color: Colors.white, fontSize: 16))),
+        ],
+      ),
+      content: SizedBox(
+        width: 350,
+        child: _isLoading
+            ? const Center(
+                child: Padding(
+                  padding: EdgeInsets.all(32),
+                  child: CircularProgressIndicator(color: Colors.white),
+                ),
+              )
+            : _error != null
+                ? Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Text('加载失败: $_error', style: const TextStyle(color: Colors.red)),
+                  )
+                : Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        iconSize: 64,
+                        icon: Icon(
+                          _isPlaying ? Icons.pause_circle : Icons.play_circle,
+                          color: Colors.white,
+                        ),
+                        onPressed: () {
+                          if (_isPlaying) {
+                            _audioPlayer.pause();
+                          } else {
+                            _audioPlayer.play();
+                          }
+                        },
+                      ),
+                      const SizedBox(height: 16),
+                      Slider(
+                        value: _position.inMilliseconds.toDouble(),
+                        max: _duration.inMilliseconds.toDouble().clamp(1.0, double.infinity),
+                        activeColor: AppTheme.primaryColor,
+                        inactiveColor: Colors.white24,
+                        onChanged: (value) {
+                          _audioPlayer.seek(Duration(milliseconds: value.toInt()));
+                        },
+                      ),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(_formatDuration(_position), style: const TextStyle(color: Colors.white70)),
+                          Text(_formatDuration(_duration), style: const TextStyle(color: Colors.white70)),
+                        ],
+                      ),
+                    ],
+                  ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('关闭', style: TextStyle(color: Colors.white70)),
+        ),
+      ],
+    );
   }
 }

@@ -458,7 +458,8 @@ class _ContactTile extends ConsumerWidget {
     final displayName = contact.getDisplayName();
     final subtitle = contact.contactUser?.phone ?? contact.contactId.substring(0, 8);
     final onlineStatus = ref.watch(onlineStatusProvider);
-    final isOnline = onlineStatus[contact.contactId] ?? false;
+    final userId = contact.contactUser?.id ?? contact.contactId;
+    final isOnline = onlineStatus[userId] ?? false;
     
     return GestureDetector(
       onSecondaryTapDown: (details) {

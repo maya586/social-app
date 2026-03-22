@@ -11,6 +11,7 @@ import (
 	"github.com/example/social-app/server/internal/config"
 	"github.com/example/social-app/server/internal/database"
 	"github.com/example/social-app/server/internal/handler"
+	"github.com/example/social-app/server/internal/monitor"
 	"github.com/example/social-app/server/internal/repository"
 	"github.com/example/social-app/server/internal/router"
 	"github.com/example/social-app/server/internal/service"
@@ -66,10 +67,12 @@ func main() {
 	contactRepo := repository.NewContactRepo()
 	conversationRepo := repository.NewConversationRepo()
 	messageRepo := repository.NewMessageRepo()
+	adminRepo := repository.NewAdminRepo()
 
 	authService := service.NewAuthService(userRepo, cfg.JWT.Secret, int(cfg.JWT.ExpireTime.Seconds()))
 	contactService := service.NewContactService(contactRepo, userRepo)
 	messageService := service.NewMessageService(messageRepo, conversationRepo)
+	adminService := service.NewAdminService(adminRepo, userRepo, cfg.JWT.Secret, int(cfg.JWT.ExpireTime.Seconds()))
 
 	hub := websocket.NewHub()
 	go hub.Run()
@@ -81,11 +84,13 @@ func main() {
 	callHandler := handler.NewCallHandler(hub)
 	userHandler := handler.NewUserHandler(userRepo)
 	wsHandler := handler.NewWSHandler(hub)
+	systemMonitor := monitor.NewSystemMonitor(hub)
+	adminHandler := handler.NewAdminHandler(adminService, adminRepo, userRepo, systemMonitor)
 
 	messageHandler.SetHub(hub)
 
 	r := gin.Default()
-	router.Setup(r, authService, authHandler, contactHandler, messageHandler, fileHandler, callHandler, userHandler, wsHandler)
+	router.Setup(r, authService, authHandler, contactHandler, messageHandler, fileHandler, callHandler, userHandler, wsHandler, adminService, adminHandler)
 
 	log.Printf("Server starting on port %s", cfg.Server.Port)
 	if err := r.Run(":" + cfg.Server.Port); err != nil {
