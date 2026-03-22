@@ -22,6 +22,7 @@ import '../../../core/network/websocket_service.dart';
 import '../../../core/router/app_router.dart';
 import '../../../core/storage/token_storage.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/state/online_status_provider.dart';
 import '../../auth/data/auth_provider.dart';
 import '../../call/presentation/call_page.dart';
 
@@ -44,6 +45,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
   bool _isRecording = false;
   bool _isPlaying = false;
   String? _currentUserId;
+  String? _otherUserId;
   String? _recordingPath;
   int _recordingDuration = 0;
   Timer? _recordingTimer;
@@ -157,6 +159,16 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     setState(() {
       _currentUserId = userId;
     });
+    
+    try {
+      final response = await ApiClient().dio.get('/conversations/${widget.conversationId}');
+      final data = response.data['data'] ?? response.data;
+      setState(() {
+        _otherUserId = data['other_user_id']?.toString();
+      });
+    } catch (e) {
+      print('Failed to load conversation: $e');
+    }
   }
   
   Future<void> _pickAndSendImage() async {
@@ -545,6 +557,26 @@ class _ChatPageState extends ConsumerState<ChatPage> {
   }
   
   void _startCall(bool isVideo) {
+    final isOnline = ref.read(onlineStatusProvider.notifier).isOnline(_otherUserId);
+    
+    if (!isOnline) {
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          backgroundColor: Colors.grey[900],
+          title: const Text('无法通话', style: TextStyle(color: Colors.white)),
+          content: const Text('对方当前不在线，无法发起通话', style: TextStyle(color: Colors.white70)),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('确定', style: TextStyle(color: AppTheme.primaryColor)),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+    
     final roomId = const Uuid().v4();
     
     Navigator.of(context).push(

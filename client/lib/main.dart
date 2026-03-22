@@ -53,11 +53,13 @@ class _MyAppState extends ConsumerState<MyApp> {
       _isChecking = false;
     });
     
-    if (isAuthenticated) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (isAuthenticated) {
         ref.read(routerProvider.notifier).goHome();
-      });
-    }
+      } else {
+        ref.read(routerProvider.notifier).goLogin();
+      }
+    });
   }
   
   @override
