@@ -337,6 +337,8 @@ func (r *AdminRepo) GetUserChatStats(userID string) (map[string]interface{}, err
 	r.db.Model(&model.Contact{}).Where("user_id = ? AND status = ?", uid, "accepted").Count(&friendCount)
 	stats["friends"] = friendCount
 
+	stats["storage_bytes"] = int64(0)
+
 	typeDist := make(map[string]int64)
 	var textCount, imageCount, voiceCount, fileCount int64
 	r.db.Model(&model.Message{}).Where("sender_id = ? AND type = ?", uid, "text").Count(&textCount)
@@ -787,6 +789,7 @@ import (
 	"github.com/example/social-app/server/internal/service"
 	"github.com/example/social-app/server/pkg/response"
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 type AdminHandler struct {
