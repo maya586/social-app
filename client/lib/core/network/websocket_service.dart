@@ -17,9 +17,11 @@ class WebSocketService {
   Timer? _syncTimer;
   bool _isConnected = false;
   String? _lastSyncTimestamp;
+  String? _currentUserId;
   
   Stream<Map<String, dynamic>> get messages => _messageController.stream;
   bool get isConnected => _isConnected;
+  String? get currentUserId => _currentUserId;
   
   Future<void> connect() async {
     if (_isConnected) return;
@@ -28,6 +30,8 @@ class WebSocketService {
     final userId = await TokenStorage().getUserId();
     
     if (token == null || userId == null) return;
+    
+    _currentUserId = userId;
     
     final uri = Uri.parse('${ApiConfig.wsUrl}?token=$token&user_id=$userId');
     _channel = WebSocketChannel.connect(uri);
@@ -53,7 +57,35 @@ class WebSocketService {
     
     _isConnected = true;
     _startHeartbeat();
+    _requestOnlineUsers();
     _requestSync();
+  }
+  
+  Future<void> _requestOnlineUsers() async {
+    try {
+      final response = await ApiClient().dio.get('/contacts');
+      final contacts = response.data['data'] as List?;
+      if (contacts != null) {
+        for (final contact in contacts) {
+          final contactUser = contact['contact_user'];
+          if (contactUser != null) {
+            final contactUserId = contactUser['id'] as String?;
+            if (contactUserId != null && contactUserId != _currentUserId) {
+              _messageController.add({
+                'event': 'user:status',
+                'data': {
+                  'user_id': contactUserId,
+                  'is_online': false,
+                  'source': 'init',
+                },
+              });
+            }
+          }
+        }
+      }
+    } catch (e) {
+      // Ignore errors
+    }
   }
   
   void _handleMessage(Map<String, dynamic> message) {
@@ -70,6 +102,9 @@ class WebSocketService {
         // Sync acknowledged
         break;
       case 'user:status':
+        _messageController.add(message);
+        break;
+      case 'online_users':
         _messageController.add(message);
         break;
       case 'call:offer':

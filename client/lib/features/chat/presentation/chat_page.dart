@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:image_picker/image_picker.dart';
@@ -432,7 +433,15 @@ class _ChatPageState extends ConsumerState<ChatPage> {
         return;
       }
       
-      await _audioPlayer.stop();
+      if (_isPlaying) {
+        await _audioPlayer.stop();
+        setState(() {
+          _isPlaying = false;
+          _playingMessageId = null;
+        });
+        await Future.delayed(const Duration(milliseconds: 100));
+      }
+      
       await _audioPlayer.setUrl('${ApiConfig.baseUrl}$url');
       await _audioPlayer.play();
       
@@ -538,24 +547,89 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     showDialog(
       context: context,
       barrierColor: Colors.black87,
-      builder: (context) => GestureDetector(
-        onTap: () => Navigator.pop(context),
-        child: Scaffold(
-          backgroundColor: Colors.transparent,
-          body: Center(
-            child: InteractiveViewer(
-              minScale: 0.5,
-              maxScale: 4.0,
-              child: Image.network(
-                '${ApiConfig.baseUrl}$mediaUrl',
-                fit: BoxFit.contain,
-                errorBuilder: (context, error, stackTrace) {
-                  return const Icon(Icons.broken_image, color: Colors.white, size: 50);
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) {
+          return GestureDetector(
+            onTap: () => Navigator.pop(context),
+            onSecondaryTapDown: (details) {
+              final overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
+              final position = RelativeRect.fromRect(
+                Rect.fromLTWH(details.globalPosition.dx, details.globalPosition.dy, 0, 0),
+                Offset.zero & overlay.size,
+              );
+              
+              showMenu<String>(
+                context: context,
+                position: position,
+                items: [
+                  const PopupMenuItem<String>(
+                    value: 'download',
+                    child: Row(
+                      children: [
+                        Icon(Icons.download, color: Colors.white),
+                        SizedBox(width: 8),
+                        Text('下载图片', style: TextStyle(color: Colors.white)),
+                      ],
+                    ),
+                  ),
+                ],
+              ).then((value) {
+                if (value == 'download') {
+                  Navigator.pop(context);
+                  final fileName = mediaUrl.split('/').last;
+                  _downloadFile(mediaUrl, fileName);
+                }
+              });
+            },
+            child: Scaffold(
+              backgroundColor: Colors.transparent,
+              body: Listener(
+                onPointerDown: (event) {
+                  if (event.kind == PointerDeviceKind.touch || event.kind == PointerDeviceKind.stylus) {
+                  }
                 },
+                child: GestureDetector(
+                  onLongPress: () {
+                    showModalBottomSheet(
+                      context: context,
+                      backgroundColor: Colors.grey[900],
+                      builder: (context) => SafeArea(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            ListTile(
+                              leading: const Icon(Icons.download, color: Colors.white),
+                              title: const Text('下载图片', style: TextStyle(color: Colors.white)),
+                              onTap: () {
+                                Navigator.pop(context);
+                                Navigator.pop(context);
+                                final fileName = mediaUrl.split('/').last;
+                                _downloadFile(mediaUrl, fileName);
+                              },
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                  child: Center(
+                    child: InteractiveViewer(
+                      minScale: 0.5,
+                      maxScale: 4.0,
+                      child: Image.network(
+                        '${ApiConfig.baseUrl}$mediaUrl',
+                        fit: BoxFit.contain,
+                        errorBuilder: (context, error, stackTrace) {
+                          return const Icon(Icons.broken_image, color: Colors.white, size: 50);
+                        },
+                      ),
+                    ),
+                  ),
+                ),
               ),
             ),
-          ),
-        ),
+          );
+        },
       ),
     );
   }
@@ -784,7 +858,10 @@ class _ChatPageState extends ConsumerState<ChatPage> {
   }
   
   void _startCall(bool isVideo) {
-    final isOnline = ref.read(onlineStatusProvider.notifier).isOnline(_otherUserId);
+    final onlineStatus = ref.read(onlineStatusProvider);
+    final isOnline = onlineStatus[_otherUserId] ?? false;
+    
+    print('Starting call: otherUserId=$_otherUserId, isOnline=$isOnline, onlineStatus=$onlineStatus');
     
     if (!isOnline) {
       showDialog(

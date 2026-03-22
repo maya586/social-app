@@ -485,7 +485,7 @@ class _ContactTile extends ConsumerWidget {
                   width: 14,
                   height: 14,
                   decoration: BoxDecoration(
-                    color: isOnline ? Colors.green : Colors.grey,
+                    color: isOnline ? Colors.green : Colors.red,
                     shape: BoxShape.circle,
                     border: Border.all(color: Colors.white, width: 2),
                   ),
@@ -497,11 +497,19 @@ class _ContactTile extends ConsumerWidget {
             children: [
               Text(displayName, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
               const SizedBox(width: 8),
-              Text(
-                isOnline ? '在线' : '离线',
-                style: TextStyle(
-                  color: isOnline ? Colors.green : Colors.grey,
-                  fontSize: 12,
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: isOnline ? Colors.green.withOpacity(0.2) : Colors.red.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  isOnline ? '在线' : '离线',
+                  style: TextStyle(
+                    color: isOnline ? Colors.green : Colors.red,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w500,
+                  ),
                 ),
               ),
             ],

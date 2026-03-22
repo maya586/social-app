@@ -40,6 +40,7 @@ func (h *Hub) Run() {
 			h.mu.Lock()
 			h.clients[client.userID] = client
 			h.mu.Unlock()
+			h.sendOnlineUsersList(client)
 			h.broadcastOnlineStatus(client.userID, true)
 
 		case client := <-h.unregister:
@@ -65,6 +66,39 @@ func (h *Hub) Run() {
 			}
 			h.mu.RUnlock()
 		}
+	}
+}
+
+func (h *Hub) sendOnlineUsersList(newClient *Client) {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+
+	var onlineUsers []map[string]interface{}
+	for userID := range h.clients {
+		if userID != newClient.userID {
+			onlineUsers = append(onlineUsers, map[string]interface{}{
+				"user_id":   userID.String(),
+				"is_online": true,
+			})
+		}
+	}
+
+	if len(onlineUsers) == 0 {
+		return
+	}
+
+	dataBytes, _ := json.Marshal(onlineUsers)
+	msg := WSMessage{
+		Event: "online_users",
+		Data:  dataBytes,
+	}
+	data, _ := json.Marshal(msg)
+
+	log.Printf("[WebSocket] Sending online users list to new client: %d users online", len(onlineUsers))
+
+	select {
+	case newClient.send <- data:
+	default:
 	}
 }
 
