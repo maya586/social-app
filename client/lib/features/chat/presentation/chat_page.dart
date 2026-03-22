@@ -492,6 +492,58 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     }
   }
   
+  Future<void> _downloadFile(String mediaUrl, String fileName) async {
+    try {
+      final directory = await getDownloadsDirectory();
+      if (directory == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('无法访问下载目录')),
+          );
+        }
+        return;
+      }
+      
+      final filePath = '${directory.path}/$fileName';
+      final file = File(filePath);
+      
+      int counter = 1;
+      var finalPath = filePath;
+      while (await file.exists()) {
+        final ext = p.extension(fileName);
+        final name = p.basenameWithoutExtension(fileName);
+        finalPath = '${directory.path}/${name}_$counter$ext';
+        counter++;
+      }
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('正在下载...')),
+        );
+      }
+      
+      final response = await ApiClient().dio.get(
+        '${ApiConfig.baseUrl}$mediaUrl',
+        options: Options(responseType: ResponseType.bytes),
+      );
+      
+      final newFile = File(finalPath);
+      await newFile.writeAsBytes(response.data);
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('文件已保存到: $finalPath')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('下载失败: $e')),
+        );
+      }
+    }
+  }
+  
   void _startCall(bool isVideo) {
     final roomId = const Uuid().v4();
     
@@ -568,6 +620,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                             maxWidth: constraints.maxWidth,
                             onDelete: _deleteMessage,
                             onPlayVoice: _playVoiceMessage,
+                            onDownloadFile: _downloadFile,
                             isPlaying: _isPlaying,
                             playingMessageId: _playingMessageId,
                           );
@@ -719,6 +772,7 @@ class _MessageBubble extends StatelessWidget {
   final double maxWidth;
   final Function(String)? onDelete;
   final Function(String, String)? onPlayVoice;
+  final Function(String, String)? onDownloadFile;
   final bool isPlaying;
   final String? playingMessageId;
   
@@ -728,6 +782,7 @@ class _MessageBubble extends StatelessWidget {
     this.maxWidth = 400,
     this.onDelete,
     this.onPlayVoice,
+    this.onDownloadFile,
     this.isPlaying = false,
     this.playingMessageId,
   });
@@ -913,10 +968,13 @@ class _MessageBubble extends StatelessWidget {
             else if (message.type == 'file')
               GestureDetector(
                 onTap: () {
-                  if (message.mediaUrl != null) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('文件下载功能开发中')),
-                    );
+                  if (message.mediaUrl != null && onDownloadFile != null) {
+                    onDownloadFile!(message.mediaUrl!, message.content ?? 'file');
+                  }
+                },
+                onDoubleTap: () {
+                  if (message.mediaUrl != null && onDownloadFile != null) {
+                    onDownloadFile!(message.mediaUrl!, message.content ?? 'file');
                   }
                 },
                 child: Container(
@@ -938,6 +996,8 @@ class _MessageBubble extends StatelessWidget {
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
+                      const SizedBox(width: 8),
+                      const Icon(Icons.download, color: Colors.white54, size: 16),
                     ],
                   ),
                 ),
