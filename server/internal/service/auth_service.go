@@ -37,7 +37,7 @@ func NewAuthService(userRepo *repository.UserRepo, jwtSecret string, tokenExpire
 
 type RegisterInput struct {
 	Phone    string `json:"phone" binding:"required"`
-	Password string `json:"password" binding:"required,min=8,max=32"`
+	Password string `json:"password" binding:"required,min=6,max=32"`
 	Nickname string `json:"nickname" binding:"required,min=2,max=20"`
 }
 
