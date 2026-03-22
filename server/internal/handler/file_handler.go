@@ -68,6 +68,9 @@ func (h *FileHandler) Download(c *gin.Context) {
 		return
 	}
 
+	// Remove leading slash if present (from /*id route)
+	objectName = strings.TrimPrefix(objectName, "/")
+
 	log.Printf("Downloading file: %s", objectName)
 
 	object, err := storage.GetFile(context.Background(), objectName)

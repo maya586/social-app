@@ -30,7 +30,7 @@ func Setup(r *gin.Engine, authService *service.AuthService, authHandler *handler
 
 		files := api.Group("/files")
 		{
-			files.GET("/:id", fileHandler.Download)
+			files.GET("/*id", fileHandler.Download)
 		}
 
 		protected := api.Group("")
