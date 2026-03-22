@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/router/app_router.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/state/online_status_provider.dart';
 import '../data/contacts_repository.dart';
 import '../domain/contact.dart';
 import '../../chat/data/chat_repository.dart';
@@ -441,7 +442,7 @@ class _PendingRequestTile extends StatelessWidget {
   }
 }
 
-class _ContactTile extends StatelessWidget {
+class _ContactTile extends ConsumerWidget {
   final Contact contact;
   final VoidCallback? onStartChat;
   final VoidCallback? onClearChat;
@@ -453,9 +454,11 @@ class _ContactTile extends StatelessWidget {
   });
   
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final displayName = contact.getDisplayName();
     final subtitle = contact.contactUser?.phone ?? contact.contactId.substring(0, 8);
+    final onlineStatus = ref.watch(onlineStatusProvider);
+    final isOnline = onlineStatus[contact.contactId] ?? false;
     
     return GestureDetector(
       onSecondaryTapDown: (details) {
@@ -465,14 +468,43 @@ class _ContactTile extends StatelessWidget {
         margin: const EdgeInsets.symmetric(vertical: 4),
         borderRadius: 16,
         child: ListTile(
-          leading: CircleAvatar(
-            backgroundColor: AppTheme.primaryColor.withOpacity(0.8),
-            child: Text(
-              displayName.isNotEmpty ? displayName.substring(0, 1) : '?',
-              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
-            ),
+          leading: Stack(
+            children: [
+              CircleAvatar(
+                backgroundColor: AppTheme.primaryColor.withOpacity(0.8),
+                child: Text(
+                  displayName.isNotEmpty ? displayName.substring(0, 1) : '?',
+                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+                ),
+              ),
+              Positioned(
+                right: 0,
+                bottom: 0,
+                child: Container(
+                  width: 14,
+                  height: 14,
+                  decoration: BoxDecoration(
+                    color: isOnline ? Colors.green : Colors.grey,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white, width: 2),
+                  ),
+                ),
+              ),
+            ],
           ),
-          title: Text(displayName, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+          title: Row(
+            children: [
+              Text(displayName, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+              const SizedBox(width: 8),
+              Text(
+                isOnline ? '在线' : '离线',
+                style: TextStyle(
+                  color: isOnline ? Colors.green : Colors.grey,
+                  fontSize: 12,
+                ),
+              ),
+            ],
+          ),
           subtitle: Text(subtitle, style: TextStyle(color: Colors.white.withOpacity(0.7))),
           trailing: Container(
             decoration: BoxDecoration(
