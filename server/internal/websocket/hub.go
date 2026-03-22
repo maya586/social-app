@@ -10,6 +10,7 @@ import (
 
 type Hub struct {
 	clients    map[uuid.UUID]*Client
+	rooms      map[string]map[uuid.UUID]bool
 	register   chan *Client
 	unregister chan *Client
 	broadcast  chan []byte
@@ -25,6 +26,7 @@ type OnlineStatus struct {
 func NewHub() *Hub {
 	return &Hub{
 		clients:    make(map[uuid.UUID]*Client),
+		rooms:      make(map[string]map[uuid.UUID]bool),
 		register:   make(chan *Client),
 		unregister: make(chan *Client),
 		broadcast:  make(chan []byte),
@@ -164,4 +166,22 @@ func (h *Hub) BroadcastCallSignal(msg *WSMessage, senderID uuid.UUID, targetUser
 		}
 	}
 	h.mu.RUnlock()
+}
+
+func (h *Hub) GetConnectionCount() int {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return len(h.clients)
+}
+
+func (h *Hub) GetOnlineUserCount() int {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return len(h.clients)
+}
+
+func (h *Hub) GetActiveRoomCount() int {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return len(h.rooms)
 }
