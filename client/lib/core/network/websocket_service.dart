@@ -57,35 +57,7 @@ class WebSocketService {
     
     _isConnected = true;
     _startHeartbeat();
-    _requestOnlineUsers();
     _requestSync();
-  }
-  
-  Future<void> _requestOnlineUsers() async {
-    try {
-      final response = await ApiClient().dio.get('/contacts');
-      final contacts = response.data['data'] as List?;
-      if (contacts != null) {
-        for (final contact in contacts) {
-          final contactUser = contact['contact_user'];
-          if (contactUser != null) {
-            final contactUserId = contactUser['id'] as String?;
-            if (contactUserId != null && contactUserId != _currentUserId) {
-              _messageController.add({
-                'event': 'user:status',
-                'data': {
-                  'user_id': contactUserId,
-                  'is_online': false,
-                  'source': 'init',
-                },
-              });
-            }
-          }
-        }
-      }
-    } catch (e) {
-      // Ignore errors
-    }
   }
   
   void _handleMessage(Map<String, dynamic> message) {

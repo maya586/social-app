@@ -142,10 +142,15 @@ class CallService {
         print('Remote video tracks: ${event.streams[0].getVideoTracks().length}');
         for (var track in event.streams[0].getAudioTracks()) {
           print('Remote audio track: ${track.id}, enabled: ${track.enabled}');
+          track.enabled = true;
+        }
+        for (var track in event.streams[0].getVideoTracks()) {
+          print('Remote video track: ${track.id}, enabled: ${track.enabled}');
         }
         onRemoteStream?.call(event.streams[0]);
       } else if (event.track.kind == 'audio' || event.track.kind == 'video') {
         print('Received ${event.track.kind} track without stream, track id: ${event.track.id}');
+        event.track.enabled = true;
       }
     };
     
