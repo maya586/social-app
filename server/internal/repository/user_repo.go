@@ -1,9 +1,9 @@
 package repository
 
 import (
-	"github.com/google/uuid"
 	"github.com/example/social-app/server/internal/database"
 	"github.com/example/social-app/server/internal/model"
+	"github.com/google/uuid"
 )
 
 type UserRepo struct{}
@@ -50,4 +50,41 @@ func (r *UserRepo) SearchByNickname(keyword string, limit int) ([]model.User, er
 		Limit(limit).
 		Find(&users).Error
 	return users, err
+}
+
+type UserListFilter struct {
+	Status   string
+	Keyword  string
+	Page     int
+	PageSize int
+}
+
+func (r *UserRepo) ListUsers(filter *UserListFilter) ([]model.User, int64, error) {
+	var users []model.User
+	var total int64
+
+	query := database.DB.Model(&model.User{})
+
+	if filter.Status != "" {
+		query = query.Where("status = ?", filter.Status)
+	}
+
+	if filter.Keyword != "" {
+		query = query.Where("nickname ILIKE ? OR phone ILIKE ?", "%"+filter.Keyword+"%", "%"+filter.Keyword+"%")
+	}
+
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	offset := (filter.Page - 1) * filter.PageSize
+	if err := query.Offset(offset).Limit(filter.PageSize).Order("created_at desc").Find(&users).Error; err != nil {
+		return nil, 0, err
+	}
+
+	return users, total, nil
+}
+
+func (r *UserRepo) UpdateStatus(id uuid.UUID, status model.UserStatus) error {
+	return database.DB.Model(&model.User{}).Where("id = ?", id).Update("status", status).Error
 }
