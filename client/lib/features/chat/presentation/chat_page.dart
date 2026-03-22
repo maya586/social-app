@@ -539,6 +539,34 @@ class _MessageBubble extends StatelessWidget {
   
   const _MessageBubble({required this.message, this.currentUserId, this.maxWidth = 400, this.onDelete});
   
+  void _showImagePreview(BuildContext context, String? mediaUrl) {
+    if (mediaUrl == null) return;
+    
+    showDialog(
+      context: context,
+      barrierColor: Colors.black87,
+      builder: (context) => GestureDetector(
+        onTap: () => Navigator.pop(context),
+        child: Scaffold(
+          backgroundColor: Colors.transparent,
+          body: Center(
+            child: InteractiveViewer(
+              minScale: 0.5,
+              maxScale: 4.0,
+              child: Image.network(
+                '${ApiConfig.baseUrl}$mediaUrl',
+                fit: BoxFit.contain,
+                errorBuilder: (context, error, stackTrace) {
+                  return const Icon(Icons.broken_image, color: Colors.white, size: 50);
+                },
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+  
   @override
   Widget build(BuildContext context) {
     final isMe = currentUserId != null && message.senderId == currentUserId;
@@ -595,23 +623,21 @@ class _MessageBubble extends StatelessWidget {
                 style: const TextStyle(color: Colors.white),
               )
             else if (message.type == 'image')
-              ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: message.mediaUrl != null
-                    ? Builder(
-                        builder: (context) {
-                          final imageUrl = '${ApiConfig.baseUrl}${message.mediaUrl}';
-                          print('Loading image: $imageUrl');
-                          return Image.network(
-                            imageUrl,
-                            width: 200,
-                            height: 200,
-                            fit: BoxFit.cover,
+              GestureDetector(
+                onTap: () => _showImagePreview(context, message.mediaUrl),
+                onDoubleTap: () => _showImagePreview(context, message.mediaUrl),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: message.mediaUrl != null
+                      ? Container(
+                          constraints: const BoxConstraints(maxWidth: 200, maxHeight: 200),
+                          child: Image.network(
+                            '${ApiConfig.baseUrl}${message.mediaUrl}',
+                            fit: BoxFit.contain,
                             errorBuilder: (context, error, stackTrace) {
-                              print('Image load error: $error');
                               return Container(
-                                width: 200,
-                                height: 200,
+                                width: 150,
+                                height: 150,
                                 color: Colors.grey[300],
                                 child: Column(
                                   mainAxisAlignment: MainAxisAlignment.center,
@@ -625,21 +651,21 @@ class _MessageBubble extends StatelessWidget {
                             loadingBuilder: (context, child, loadingProgress) {
                               if (loadingProgress == null) return child;
                               return Container(
-                                width: 200,
-                                height: 200,
+                                width: 150,
+                                height: 150,
                                 color: Colors.grey[200],
                                 child: const Center(child: CircularProgressIndicator()),
                               );
                             },
-                          );
-                        },
-                      )
-                    : Container(
-                        width: 150,
-                        height: 150,
-                        color: Colors.grey[300],
-                        child: const Icon(Icons.image),
-                      ),
+                          ),
+                        )
+                      : Container(
+                          width: 150,
+                          height: 150,
+                          color: Colors.grey[300],
+                          child: const Icon(Icons.image),
+                        ),
+                ),
               )
             else if (message.type == 'video')
               GestureDetector(
