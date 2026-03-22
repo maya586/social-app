@@ -9,7 +9,7 @@ import 'package:mime/mime.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
-import 'package:audioplayers/audioplayers.dart';
+import 'package:just_audio/just_audio.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'dart:async';
 import 'dart:convert';
@@ -433,19 +433,22 @@ class _ChatPageState extends ConsumerState<ChatPage> {
       }
       
       await _audioPlayer.stop();
-      await _audioPlayer.play(UrlSource('${ApiConfig.baseUrl}$url'));
+      await _audioPlayer.setUrl('${ApiConfig.baseUrl}$url');
+      await _audioPlayer.play();
       
       setState(() {
         _isPlaying = true;
         _playingMessageId = messageId;
       });
       
-      _audioPlayer.onPlayerComplete.listen((_) {
-        if (mounted) {
-          setState(() {
-            _isPlaying = false;
-            _playingMessageId = null;
-          });
+      _audioPlayer.playerStateStream.listen((playerState) {
+        if (playerState.processingState == ProcessingState.completed) {
+          if (mounted) {
+            setState(() {
+              _isPlaying = false;
+              _playingMessageId = null;
+            });
+          }
         }
       });
     } catch (e) {

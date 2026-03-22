@@ -28,7 +28,7 @@ dependencies:
   mime: ^1.0.4
   path: ^1.8.3
   record: ^6.2.0
-  audioplayers: ^6.1.0
+  just_audio: ^0.9.40
 
 dev_dependencies:
   flutter_test:
