@@ -12,6 +12,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:url_launcher/url_launcher_string.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -523,6 +524,8 @@ class _ChatPageState extends ConsumerState<ChatPage> {
       '.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp',
       '.mp3', '.wav', '.ogg', '.m4a', '.aac',
       '.mp4', '.webm',
+      '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx',
+      '.pdf',
     ];
     return previewableExtensions.contains(ext);
   }
@@ -538,6 +541,8 @@ class _ChatPageState extends ConsumerState<ChatPage> {
       _showTextPreview(mediaUrl, fileName);
     } else if (['.mp4', '.webm'].contains(ext)) {
       _showVideoPreview(mediaUrl, fileName);
+    } else if (['.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.pdf'].contains(ext)) {
+      _showOfficePreview(mediaUrl, fileName);
     } else {
       _showDownloadConfirmDialog(mediaUrl, fileName);
     }
@@ -771,6 +776,152 @@ class _ChatPageState extends ConsumerState<ChatPage> {
         ],
       ),
     );
+  }
+
+  Future<void> _showOfficePreview(String mediaUrl, String fileName) async {
+    final ext = p.extension(fileName).toLowerCase();
+    IconData fileIcon;
+    String fileType;
+    
+    if (['.doc', '.docx'].contains(ext)) {
+      fileIcon = Icons.description;
+      fileType = 'Word 文档';
+    } else if (['.xls', '.xlsx'].contains(ext)) {
+      fileIcon = Icons.table_chart;
+      fileType = 'Excel 表格';
+    } else if (['.ppt', '.pptx'].contains(ext)) {
+      fileIcon = Icons.slideshow;
+      fileType = 'PowerPoint 演示文稿';
+    } else if (ext == '.pdf') {
+      fileIcon = Icons.picture_as_pdf;
+      fileType = 'PDF 文档';
+    } else {
+      fileIcon = Icons.insert_drive_file;
+      fileType = '文档';
+    }
+    
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.grey[900],
+        title: Row(
+          children: [
+            Icon(fileIcon, color: AppTheme.primaryColor),
+            const SizedBox(width: 8),
+            Expanded(child: Text(fileName, style: const TextStyle(color: Colors.white, fontSize: 16))),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 300,
+              height: 150,
+              decoration: BoxDecoration(
+                color: Colors.black26,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(fileIcon, color: Colors.white54, size: 48),
+                  const SizedBox(height: 12),
+                  Text(
+                    fileType,
+                    style: const TextStyle(color: Colors.white70, fontSize: 14),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '点击"打开"使用系统应用预览',
+                    style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 12),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('关闭', style: TextStyle(color: Colors.white70)),
+          ),
+          ElevatedButton.icon(
+            onPressed: () async {
+              Navigator.pop(context);
+              await _openOfficeFile(mediaUrl, fileName);
+            },
+            icon: const Icon(Icons.open_in_new, size: 18),
+            label: const Text('打开'),
+          ),
+          TextButton.icon(
+            onPressed: () {
+              Navigator.pop(context);
+              _downloadFile(mediaUrl, fileName);
+            },
+            icon: const Icon(Icons.download, size: 18, color: Colors.white70),
+            label: const Text('下载', style: TextStyle(color: Colors.white70)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _openOfficeFile(String mediaUrl, String fileName) async {
+    try {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => AlertDialog(
+          backgroundColor: Colors.grey[900],
+          content: const Row(
+            children: [
+              CircularProgressIndicator(color: Colors.white),
+              SizedBox(width: 16),
+              Text('正在下载文件...', style: TextStyle(color: Colors.white)),
+            ],
+          ),
+        ),
+      );
+      
+      final response = await ApiClient().dio.get(
+        mediaUrl,
+        options: Options(responseType: ResponseType.bytes),
+      );
+      
+      final bytes = response.data as List<int>;
+      
+      final dir = await getApplicationDocumentsDirectory();
+      final tempDir = Directory('${dir.path}/office_preview');
+      if (!await tempDir.exists()) {
+        await tempDir.create(recursive: true);
+      }
+      
+      final file = File('${tempDir.path}/$fileName');
+      await file.writeAsBytes(bytes);
+      
+      if (mounted) {
+        Navigator.pop(context);
+      }
+      
+      final filePath = file.path;
+      if (await canLaunchUrlString(filePath)) {
+        await launchUrlString(filePath);
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('无法打开文件，请手动下载后打开')),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('打开文件失败: $e')),
+        );
+      }
+    }
   }
 
   void _showDownloadConfirmDialog(String mediaUrl, String fileName) {
