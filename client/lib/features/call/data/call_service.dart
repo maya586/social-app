@@ -15,7 +15,7 @@ class CallService {
   bool _isInitialized = false;
   bool _isEnded = false;
   
-  static bool useTurnServer = false;
+  static bool useTurnServer = true;
   
   Function(MediaStream)? onRemoteStream;
   Function()? onCallEnded;
@@ -134,12 +134,18 @@ class CallService {
     };
     
     _peerConnection?.onTrack = (event) {
-      print('onTrack: ${event.track.kind}, streams: ${event.streams.length}');
+      print('=== onTrack: ${event.track.kind}, enabled: ${event.track.enabled}, streams: ${event.streams.length} ===');
       if (event.streams.isNotEmpty && !_isEnded) {
         _remoteStream = event.streams[0];
+        print('Remote stream id: ${event.streams[0].id}');
+        print('Remote audio tracks: ${event.streams[0].getAudioTracks().length}');
+        print('Remote video tracks: ${event.streams[0].getVideoTracks().length}');
+        for (var track in event.streams[0].getAudioTracks()) {
+          print('Remote audio track: ${track.id}, enabled: ${track.enabled}');
+        }
         onRemoteStream?.call(event.streams[0]);
       } else if (event.track.kind == 'audio' || event.track.kind == 'video') {
-        print('Received ${event.track.kind} track without stream');
+        print('Received ${event.track.kind} track without stream, track id: ${event.track.id}');
       }
     };
     
