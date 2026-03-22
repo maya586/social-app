@@ -162,7 +162,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
       });
       
       final response = await ApiClient().dio.post('/files/upload?type=image', data: formData);
-      final url = response.data['url'];
+      final url = response.data['data']['url'];
       
       ref.read(messagesProvider(widget.conversationId).notifier).sendMessage(
         type: 'image',
@@ -211,7 +211,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
       });
       
       final response = await ApiClient().dio.post('/files/upload?type=image', data: formData);
-      final url = response.data['url'];
+      final url = response.data['data']['url'];
       
       ref.read(messagesProvider(widget.conversationId).notifier).sendMessage(
         type: 'image',
@@ -266,7 +266,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
       });
       
       final response = await ApiClient().dio.post('/files/upload?type=$fileType', data: formData);
-      final url = response.data['url'];
+      final url = response.data['data']['url'];
       
       ref.read(messagesProvider(widget.conversationId).notifier).sendMessage(
         type: fileType,
