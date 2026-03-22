@@ -857,11 +857,28 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     }
   }
   
-  void _startCall(bool isVideo) {
+  void _startCall(bool isVideo) async {
+    if (_otherUserId == null) {
+      await _loadCurrentUserId();
+      if (_otherUserId == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('无法获取对方信息，请稍后重试')),
+          );
+        }
+        return;
+      }
+    }
+    
     final onlineStatus = ref.read(onlineStatusProvider);
     final isOnline = onlineStatus[_otherUserId] ?? false;
     
-    print('Starting call: otherUserId=$_otherUserId, isOnline=$isOnline, onlineStatus=$onlineStatus');
+    print('=== Call Debug ===');
+    print('otherUserId: $_otherUserId');
+    print('isOnline: $isOnline');
+    print('onlineStatus keys: ${onlineStatus.keys.toList()}');
+    print('onlineStatus values: ${onlineStatus.entries.map((e) => "${e.key}: ${e.value}").toList()}');
+    print('==================');
     
     if (!isOnline) {
       showDialog(
