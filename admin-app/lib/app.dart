@@ -5,6 +5,7 @@ import 'core/state/admin_auth_provider.dart';
 import 'features/auth/presentation/login_page.dart';
 import 'features/dashboard/presentation/dashboard_page.dart';
 import 'features/users/presentation/users_page.dart';
+import 'features/monitor/presentation/monitor_page.dart';
 import 'features/settings/presentation/settings_page.dart';
 
 class AdminApp extends ConsumerStatefulWidget {
@@ -94,7 +95,7 @@ class _MainShellState extends ConsumerState<MainShell> {
   final _pages = const [
     DashboardPage(),
     UsersPage(),
-    _PlaceholderPage(title: '监控', icon: Icons.monitor),
+    MonitorPage(),
     SettingsPage(),
   ];
 
