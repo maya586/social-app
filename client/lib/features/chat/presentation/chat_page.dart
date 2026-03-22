@@ -873,13 +873,6 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     final onlineStatus = ref.read(onlineStatusProvider);
     final isOnline = onlineStatus[_otherUserId] ?? false;
     
-    print('=== Call Debug ===');
-    print('otherUserId: $_otherUserId');
-    print('isOnline: $isOnline');
-    print('onlineStatus keys: ${onlineStatus.keys.toList()}');
-    print('onlineStatus values: ${onlineStatus.entries.map((e) => "${e.key}: ${e.value}").toList()}');
-    print('==================');
-    
     if (!isOnline) {
       showDialog(
         context: context,
