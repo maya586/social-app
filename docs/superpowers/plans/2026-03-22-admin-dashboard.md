@@ -191,6 +191,8 @@ git commit -m "feat(server): add Admin and SystemConfig models with seed script"
 package repository
 
 import (
+	"time"
+
 	"github.com/example/social-app/server/internal/database"
 	"github.com/example/social-app/server/internal/model"
 	"github.com/google/uuid"
@@ -306,6 +308,96 @@ func (r *AdminRepo) GetMessageTrend(days int) ([]int64, error) {
 		trends = append(trends, count)
 	}
 	return trends, nil
+}
+
+func (r *AdminRepo) GetUserChatStats(userID string) (map[string]interface{}, error) {
+	uid, err := uuid.Parse(userID)
+	if err != nil {
+		return nil, err
+	}
+
+	stats := make(map[string]interface{})
+
+	var sentCount int64
+	r.db.Model(&model.Message{}).Where("sender_id = ?", uid).Count(&sentCount)
+	stats["sent_messages"] = sentCount
+
+	var receivedCount int64
+	r.db.Model(&model.Message{}).
+		Joins("JOIN conversation_members cm ON messages.conversation_id = cm.conversation_id").
+		Where("cm.user_id = ? AND messages.sender_id != ?", uid, uid).
+		Count(&receivedCount)
+	stats["received_messages"] = receivedCount
+
+	var convCount int64
+	r.db.Model(&model.ConversationMember{}).Where("user_id = ?", uid).Count(&convCount)
+	stats["conversations"] = convCount
+
+	var friendCount int64
+	r.db.Model(&model.Contact{}).Where("user_id = ? AND status = ?", uid, "accepted").Count(&friendCount)
+	stats["friends"] = friendCount
+
+	typeDist := make(map[string]int64)
+	var textCount, imageCount, voiceCount, fileCount int64
+	r.db.Model(&model.Message{}).Where("sender_id = ? AND type = ?", uid, "text").Count(&textCount)
+	r.db.Model(&model.Message{}).Where("sender_id = ? AND type = ?", uid, "image").Count(&imageCount)
+	r.db.Model(&model.Message{}).Where("sender_id = ? AND type = ?", uid, "voice").Count(&voiceCount)
+	r.db.Model(&model.Message{}).Where("sender_id = ? AND type = ?", uid, "file").Count(&fileCount)
+	typeDist["text"] = textCount
+	typeDist["image"] = imageCount
+	typeDist["voice"] = voiceCount
+	typeDist["file"] = fileCount
+	stats["type_distribution"] = typeDist
+
+	return stats, nil
+}
+
+func (r *AdminRepo) GetUserConversations(userID string) ([]map[string]interface{}, error) {
+	uid, err := uuid.Parse(userID)
+	if err != nil {
+		return nil, err
+	}
+
+	var members []model.ConversationMember
+	r.db.Where("user_id = ?", uid).Find(&members)
+
+	var result []map[string]interface{}
+	for _, member := range members {
+		var msgCount int64
+		r.db.Model(&model.Message{}).Where("conversation_id = ?", member.ConversationID).Count(&msgCount)
+
+		var lastMsg model.Message
+		r.db.Where("conversation_id = ?", member.ConversationID).Order("created_at desc").First(&lastMsg)
+
+		result = append(result, map[string]interface{}{
+			"id":            member.ConversationID,
+			"type":          "private",
+			"message_count": msgCount,
+			"last_message":  lastMsg.Content,
+		})
+	}
+
+	return result, nil
+}
+
+func (r *AdminRepo) GetConversationMessages(conversationID string, page, pageSize int) ([]model.Message, int64, error) {
+	var messages []model.Message
+	var total int64
+
+	cid, err := uuid.Parse(conversationID)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	r.db.Model(&model.Message{}).Where("conversation_id = ?", cid).Count(&total)
+
+	offset := (page - 1) * pageSize
+	err = r.db.Where("conversation_id = ?", cid).
+		Order("created_at desc").
+		Offset(offset).Limit(pageSize).
+		Find(&messages).Error
+
+	return messages, total, err
 }
 ```
 
@@ -978,7 +1070,7 @@ func Setup(r *gin.Engine, authService *service.AuthService, authHandler *handler
 	contactHandler *handler.ContactHandler, messageHandler *handler.MessageHandler,
 	fileHandler *handler.FileHandler, callHandler *handler.CallHandler,
 	userHandler *handler.UserHandler, wsHandler *handler.WSHandler,
-	adminHandler *handler.AdminHandler) {
+	adminHandler *handler.AdminHandler, adminService *service.AdminService) {
 
 	r.Use(middleware.CORS())
 
@@ -1161,7 +1253,7 @@ func main() {
 	messageHandler.SetHub(hub)
 
 	r := gin.Default()
-	router.Setup(r, authService, authHandler, contactHandler, messageHandler, fileHandler, callHandler, userHandler, wsHandler, adminHandler)
+	router.Setup(r, authService, authHandler, contactHandler, messageHandler, fileHandler, callHandler, userHandler, wsHandler, adminHandler, adminService)
 
 	log.Printf("Server starting on port %s", cfg.Server.Port)
 	if err := r.Run(":" + cfg.Server.Port); err != nil {
