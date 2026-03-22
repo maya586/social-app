@@ -385,7 +385,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
         'file': await MultipartFile.fromFile(file.path),
       });
       
-      final response = await ApiClient().dio.post('/files/upload?type=audio', data: formData);
+      final response = await ApiClient().dio.post('/files/upload?type=voice', data: formData);
       final url = response.data['data']['url'];
       
       ref.read(messagesProvider(widget.conversationId).notifier).sendMessage(

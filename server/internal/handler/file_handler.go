@@ -126,6 +126,7 @@ func isValidFileType(fileType string) bool {
 	validTypes := map[string]bool{
 		"image": true,
 		"voice": true,
+		"audio": true,
 		"video": true,
 		"file":  true,
 	}
