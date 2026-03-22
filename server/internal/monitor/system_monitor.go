@@ -1,7 +1,11 @@
 package monitor
 
 import (
+	"bufio"
+	"os"
 	"runtime"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/example/social-app/server/internal/websocket"
@@ -63,18 +67,24 @@ func (m *SystemMonitor) GetMonitorData() *MonitorData {
 func (m *SystemMonitor) getServerStats() ServerStats {
 	stats := ServerStats{}
 
+	// Try gopsutil first
 	if percent, err := cpu.Percent(time.Second, false); err == nil && len(percent) > 0 {
 		stats.CPUPercent = percent[0]
+	} else {
+		// Fallback: read from /proc/stat for Docker containers
+		stats.CPUPercent = m.readCPUFromProc()
 	}
 
 	if vm, err := mem.VirtualMemory(); err == nil {
 		stats.MemoryPercent = vm.UsedPercent
+	} else {
+		// Fallback: read from /proc/meminfo
+		stats.MemoryPercent = m.readMemFromProc()
 	}
 
 	if usage, err := disk.Usage("/"); err == nil {
 		stats.DiskPercent = usage.UsedPercent
-	}
-	if runtime.GOOS == "windows" {
+	} else if runtime.GOOS == "windows" {
 		if usage, err := disk.Usage("C:"); err == nil {
 			stats.DiskPercent = usage.UsedPercent
 		}
@@ -89,6 +99,70 @@ func (m *SystemMonitor) getServerStats() ServerStats {
 	}
 
 	return stats
+}
+
+func (m *SystemMonitor) readCPUFromProc() float64 {
+	file, err := os.Open("/proc/stat")
+	if err != nil {
+		return 0
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	if !scanner.Scan() {
+		return 0
+	}
+
+	line := scanner.Text()
+	fields := strings.Fields(line)
+	if len(fields) < 5 || fields[0] != "cpu" {
+		return 0
+	}
+
+	var total, idle uint64
+	for i := 1; i < len(fields) && i <= 8; i++ {
+		val, _ := strconv.ParseUint(fields[i], 10, 64)
+		total += val
+		if i == 4 {
+			idle = val
+		}
+	}
+
+	if total == 0 {
+		return 0
+	}
+	return float64(total-idle) * 100 / float64(total)
+}
+
+func (m *SystemMonitor) readMemFromProc() float64 {
+	file, err := os.Open("/proc/meminfo")
+	if err != nil {
+		return 0
+	}
+	defer file.Close()
+
+	var total, available uint64
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := scanner.Text()
+		fields := strings.Fields(line)
+		if len(fields) < 2 {
+			continue
+		}
+
+		val, _ := strconv.ParseUint(fields[1], 10, 64)
+		switch fields[0] {
+		case "MemTotal:":
+			total = val
+		case "MemAvailable:", "MemFree:":
+			available = val
+		}
+	}
+
+	if total == 0 {
+		return 0
+	}
+	return float64(total-available) * 100 / float64(total)
 }
 
 func (m *SystemMonitor) getAPIStats() APIStats {

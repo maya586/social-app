@@ -18,6 +18,7 @@ func Setup(r *gin.Engine, authService *service.AuthService, authHandler *handler
 	adminService *service.AdminService, adminHandler *handler.AdminHandler) {
 
 	r.Use(middleware.CORS())
+	r.Use(middleware.MonitorMiddleware())
 
 	api := r.Group("/api/v1")
 	{

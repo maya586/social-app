@@ -11,6 +11,7 @@ import (
 	"github.com/example/social-app/server/internal/config"
 	"github.com/example/social-app/server/internal/database"
 	"github.com/example/social-app/server/internal/handler"
+	"github.com/example/social-app/server/internal/middleware"
 	"github.com/example/social-app/server/internal/monitor"
 	"github.com/example/social-app/server/internal/repository"
 	"github.com/example/social-app/server/internal/router"
@@ -77,6 +78,9 @@ func main() {
 	hub := websocket.NewHub()
 	go hub.Run()
 
+	systemMonitor := monitor.NewSystemMonitor(hub)
+	middleware.InitMonitor(systemMonitor)
+
 	authHandler := handler.NewAuthHandler(authService)
 	contactHandler := handler.NewContactHandler(contactService)
 	messageHandler := handler.NewMessageHandler(messageService)
@@ -84,7 +88,6 @@ func main() {
 	callHandler := handler.NewCallHandler(hub)
 	userHandler := handler.NewUserHandler(userRepo)
 	wsHandler := handler.NewWSHandler(hub)
-	systemMonitor := monitor.NewSystemMonitor(hub)
 	adminHandler := handler.NewAdminHandler(adminService, adminRepo, userRepo, systemMonitor)
 
 	messageHandler.SetHub(hub)
