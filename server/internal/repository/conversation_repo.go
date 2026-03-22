@@ -115,3 +115,26 @@ func (r *ConversationRepo) UpdateLastMessageAt(conversationID uuid.UUID) error {
 		Where("id = ?", conversationID).
 		Update("last_message_at", gorm.Expr("NOW()")).Error
 }
+
+func (r *ConversationRepo) FindWithOtherUser(conversationID, userID uuid.UUID) (*model.ConversationWithDetails, error) {
+	var result model.ConversationWithDetails
+
+	query := `
+		SELECT 
+			c.id, c.type, c.name, c.avatar_url, c.owner_id, c.last_message_at, c.created_at,
+			other_user.id as other_user_id,
+			other_user.nickname as other_user_name,
+			other_user.avatar_url as other_user_avatar
+		FROM conversations c
+		LEFT JOIN LATERAL (
+			SELECT u2.id, u2.nickname, u2.avatar_url FROM conversation_members cm2
+			JOIN users u2 ON cm2.user_id = u2.id
+			WHERE cm2.conversation_id = c.id AND cm2.user_id != ?
+			LIMIT 1
+		) other_user ON c.type = 'private'
+		WHERE c.id = ?
+	`
+
+	err := database.DB.Raw(query, userID, conversationID).Scan(&result).Error
+	return &result, err
+}

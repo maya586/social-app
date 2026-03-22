@@ -228,7 +228,7 @@ func (h *MessageHandler) CreateConversation(c *gin.Context) {
 // @Security BearerAuth
 // @Produce json
 // @Param id path string true "会话ID"
-// @Success 200 {object} model.Conversation "会话详情"
+// @Success 200 {object} model.ConversationWithDetails "会话详情"
 // @Failure 404 {object} map[string]string "会话不存在"
 // @Router /conversations/{id} [get]
 func (h *MessageHandler) GetConversation(c *gin.Context) {

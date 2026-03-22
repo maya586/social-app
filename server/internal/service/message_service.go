@@ -183,7 +183,7 @@ func (s *MessageService) CreateConversation(userID uuid.UUID, convType model.Con
 	return conversation, nil
 }
 
-func (s *MessageService) GetConversation(conversationID, userID uuid.UUID) (*model.Conversation, error) {
+func (s *MessageService) GetConversation(conversationID, userID uuid.UUID) (*model.ConversationWithDetails, error) {
 	isMember, err := s.conversationRepo.IsMember(conversationID, userID)
 	if err != nil {
 		return nil, err
@@ -192,7 +192,7 @@ func (s *MessageService) GetConversation(conversationID, userID uuid.UUID) (*mod
 		return nil, ErrNotMember
 	}
 
-	return s.conversationRepo.FindByID(conversationID)
+	return s.conversationRepo.FindWithOtherUser(conversationID, userID)
 }
 
 func (s *MessageService) GetConversationMembers(conversationID uuid.UUID) ([]uuid.UUID, error) {
