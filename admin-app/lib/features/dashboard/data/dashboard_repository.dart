@@ -3,52 +3,41 @@ import '../../../core/network/admin_api_client.dart';
 
 class DashboardStats {
   final int totalUsers;
-  final int todayRegistrations;
+  final int todayNewUsers;
   final int onlineUsers;
   final int totalMessages;
   final int todayMessages;
-  final List<DailyStats> userGrowth;
-  final List<DailyStats> messageTrend;
+  final int activeConversations;
+  final List<int> userTrend;
+  final List<int> messageTrend;
 
   const DashboardStats({
     required this.totalUsers,
-    required this.todayRegistrations,
+    required this.todayNewUsers,
     required this.onlineUsers,
     required this.totalMessages,
     required this.todayMessages,
-    required this.userGrowth,
+    required this.activeConversations,
+    required this.userTrend,
     required this.messageTrend,
   });
 
   factory DashboardStats.fromJson(Map<String, dynamic> json) {
     return DashboardStats(
-      totalUsers: json['total_users'] as int? ?? 0,
-      todayRegistrations: json['today_registrations'] as int? ?? 0,
-      onlineUsers: json['online_users'] as int? ?? 0,
-      totalMessages: json['total_messages'] as int? ?? 0,
-      todayMessages: json['today_messages'] as int? ?? 0,
-      userGrowth: (json['user_growth'] as List<dynamic>?)
-              ?.map((e) => DailyStats.fromJson(e as Map<String, dynamic>))
+      totalUsers: (json['total_users'] ?? 0) as int,
+      todayNewUsers: (json['today_new_users'] ?? 0) as int,
+      onlineUsers: (json['online_users'] ?? 0) as int,
+      totalMessages: (json['total_messages'] ?? 0) as int,
+      todayMessages: (json['today_messages'] ?? 0) as int,
+      activeConversations: (json['active_conversations'] ?? 0) as int,
+      userTrend: (json['user_trend'] as List<dynamic>?)
+              ?.map((e) => (e as num).toInt())
               .toList() ??
           [],
       messageTrend: (json['message_trend'] as List<dynamic>?)
-              ?.map((e) => DailyStats.fromJson(e as Map<String, dynamic>))
+              ?.map((e) => (e as num).toInt())
               .toList() ??
           [],
-    );
-  }
-}
-
-class DailyStats {
-  final String date;
-  final int count;
-
-  const DailyStats({required this.date, required this.count});
-
-  factory DailyStats.fromJson(Map<String, dynamic> json) {
-    return DailyStats(
-      date: json['date'] as String? ?? '',
-      count: json['count'] as int? ?? 0,
     );
   }
 }

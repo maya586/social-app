@@ -87,7 +87,7 @@ class DashboardPage extends ConsumerWidget {
           ),
           StatCard(
             title: '今日注册',
-            value: _formatNumber(stats.todayRegistrations),
+            value: _formatNumber(stats.todayNewUsers),
             icon: Icons.person_add,
             color: AdminTheme.successColor,
             subtitle: '今日',
@@ -174,10 +174,10 @@ class DashboardPage extends ConsumerWidget {
           const SizedBox(height: 24),
           SizedBox(
             height: 200,
-            child: stats.userGrowth.isEmpty
+            child: stats.userTrend.isEmpty
                 ? _buildEmptyChart()
                 : _buildLineChart(
-                    stats.userGrowth,
+                    stats.userTrend,
                     AdminTheme.primaryColor,
                   ),
           ),
@@ -224,14 +224,14 @@ class DashboardPage extends ConsumerWidget {
     );
   }
 
-  Widget _buildLineChart(List<DailyStats> data, Color color) {
+  Widget _buildLineChart(List<int> data, Color color) {
     if (data.isEmpty) return _buildEmptyChart();
 
     final spots = data.asMap().entries.map((entry) {
-      return FlSpot(entry.key.toDouble(), entry.value.count.toDouble());
+      return FlSpot(entry.key.toDouble(), entry.value.toDouble());
     }).toList();
 
-    final maxY = data.map((e) => e.count).reduce((a, b) => a > b ? a : b);
+    final maxY = data.reduce((a, b) => a > b ? a : b);
     final interval = maxY > 0 ? (maxY / 4).ceilToDouble() : 1.0;
 
     return LineChart(
@@ -261,13 +261,11 @@ class DashboardPage extends ConsumerWidget {
                 if (index < 0 || index >= data.length) {
                   return const SizedBox();
                 }
-                final date = data[index].date;
-                final parts = date.split('-');
-                final label = parts.length >= 2 ? '${parts[1]}/${parts[2]}' : date;
+                final days = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
                 return Padding(
                   padding: const EdgeInsets.only(top: 8),
                   child: Text(
-                    label,
+                    days[index],
                     style: const TextStyle(
                       color: AdminTheme.textTertiary,
                       fontSize: 10,
@@ -336,17 +334,9 @@ class DashboardPage extends ConsumerWidget {
             tooltipBgColor: AdminTheme.cardColor,
             getTooltipItems: (touchedSpots) {
               return touchedSpots.map((spot) {
-                final index = spot.x.toInt();
-                final date = index >= 0 && index < data.length ? data[index].date : '';
                 return LineTooltipItem(
                   '${spot.y.toInt()}',
                   TextStyle(color: color, fontWeight: FontWeight.bold),
-                  children: [
-                    TextSpan(
-                      text: '\n$date',
-                      style: const TextStyle(color: AdminTheme.textTertiary, fontSize: 10),
-                    ),
-                  ],
                 );
               }).toList();
             },
