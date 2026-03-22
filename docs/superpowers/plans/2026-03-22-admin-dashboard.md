@@ -191,6 +191,7 @@ git commit -m "feat(server): add Admin and SystemConfig models with seed script"
 package repository
 
 import (
+	"github.com/example/social-app/server/internal/database"
 	"github.com/example/social-app/server/internal/model"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -279,8 +280,9 @@ func (r *AdminRepo) GetUserTrend(days int) ([]int64, error) {
 	var trends []int64
 	for i := days - 1; i >= 0; i-- {
 		var count int64
+		date := time.Now().AddDate(0, 0, -i).Format("2006-01-02")
 		err := r.db.Model(&model.User{}).
-			Where("DATE(created_at) = CURRENT_DATE - INTERVAL '? days'", i).
+			Where("DATE(created_at) = ?", date).
 			Count(&count).Error
 		if err != nil {
 			return nil, err
@@ -294,8 +296,9 @@ func (r *AdminRepo) GetMessageTrend(days int) ([]int64, error) {
 	var trends []int64
 	for i := days - 1; i >= 0; i-- {
 		var count int64
+		date := time.Now().AddDate(0, 0, -i).Format("2006-01-02")
 		err := r.db.Model(&model.Message{}).
-			Where("DATE(created_at) = CURRENT_DATE - INTERVAL '? days'", i).
+			Where("DATE(created_at) = ?", date).
 			Count(&count).Error
 		if err != nil {
 			return nil, err
@@ -753,9 +756,13 @@ func (h *AdminHandler) GetProfile(c *gin.Context) {
 		return
 	}
 
-	admin, err := h.adminRepo.FindByID(adminID.(interface{ String() string }).(interface {
-		String() string
-	}))
+	uid, ok := adminID.(uuid.UUID)
+	if !ok {
+		response.Unauthorized(c, "Invalid admin ID")
+		return
+	}
+
+	admin, err := h.adminRepo.FindByID(uid)
 	if err != nil {
 		response.Error(c, 404, "ADMIN_NOT_FOUND", "Admin not found")
 		return
@@ -992,21 +999,25 @@ func Setup(r *gin.Engine, authService *service.AuthService, authHandler *handler
 		}
 
 		admin := api.Group("/admin")
-		admin.Use(middleware.AdminAuthMiddleware())
 		{
 			admin.POST("/login", adminHandler.Login)
-			admin.POST("/logout", adminHandler.Logout)
-			admin.GET("/profile", adminHandler.GetProfile)
-			admin.GET("/dashboard", adminHandler.GetDashboard)
-			admin.GET("/monitor", adminHandler.GetMonitor)
-			admin.GET("/monitor/stream", adminHandler.StreamMonitor)
-			admin.GET("/users", adminHandler.GetUsers)
-			admin.GET("/users/:id", adminHandler.GetUser)
-			admin.PUT("/users/:id/status", adminHandler.UpdateUserStatus)
-			admin.GET("/users/:id/chats", adminHandler.GetUserChats)
-			admin.GET("/conversations/:id/messages", adminHandler.GetConversationMessages)
-			admin.GET("/configs", adminHandler.GetConfigs)
-			admin.PUT("/configs/:key", adminHandler.UpdateConfig)
+		}
+
+		adminProtected := api.Group("/admin")
+		adminProtected.Use(middleware.AdminAuthMiddleware(adminService))
+		{
+			adminProtected.POST("/logout", adminHandler.Logout)
+			adminProtected.GET("/profile", adminHandler.GetProfile)
+			adminProtected.GET("/dashboard", adminHandler.GetDashboard)
+			adminProtected.GET("/monitor", adminHandler.GetMonitor)
+			adminProtected.GET("/monitor/stream", adminHandler.StreamMonitor)
+			adminProtected.GET("/users", adminHandler.GetUsers)
+			adminProtected.GET("/users/:id", adminHandler.GetUser)
+			adminProtected.PUT("/users/:id/status", adminHandler.UpdateUserStatus)
+			adminProtected.GET("/users/:id/chats", adminHandler.GetUserChats)
+			adminProtected.GET("/conversations/:id/messages", adminHandler.GetConversationMessages)
+			adminProtected.GET("/configs", adminHandler.GetConfigs)
+			adminProtected.PUT("/configs/:key", adminHandler.UpdateConfig)
 		}
 
 		protected := api.Group("")
@@ -1036,10 +1047,11 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/example/social-app/server/internal/service"
 	"github.com/example/social-app/server/pkg/response"
 )
 
-func AdminAuthMiddleware() gin.HandlerFunc {
+func AdminAuthMiddleware(adminService *service.AdminService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" {
@@ -1055,7 +1067,15 @@ func AdminAuthMiddleware() gin.HandlerFunc {
 			return
 		}
 
-		c.Set("admin_token", parts[1])
+		claims, err := adminService.ValidateToken(parts[1])
+		if err != nil {
+			response.Unauthorized(c, "Invalid or expired token")
+			c.Abort()
+			return
+		}
+
+		c.Set("admin_id", claims.UserID)
+		c.Set("admin_username", claims.Phone)
 		c.Next()
 	}
 }
@@ -2299,11 +2319,590 @@ class UsersRepository {
 }
 ```
 
-- [ ] **Step 2: 提交用户管理页面**
+- [ ] **Step 2: 创建用户列表页面**
 
-实现users_page.dart和user_detail_page.dart，包含用户列表、搜索、筛选、详情查看、禁用/启用功能。
+```dart
+// lib/features/users/presentation/users_page.dart
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
+import '../../../core/theme/admin_theme.dart';
+import '../../../shared/widgets/glass_container.dart';
+import '../data/users_repository.dart';
+import 'user_detail_page.dart';
 
-- [ ] **Step 3: 提交**
+final usersRepositoryProvider = Provider((ref) => UsersRepository());
+
+final usersProvider = FutureProvider.family<Map<String, dynamic>, Map<String, dynamic>>((ref, params) async {
+  return ref.read(usersRepositoryProvider).getUsers(
+    page: params['page'] ?? 1,
+    pageSize: params['pageSize'] ?? 20,
+    keyword: params['keyword'],
+    status: params['status'],
+  );
+});
+
+class UsersPage extends ConsumerStatefulWidget {
+  const UsersPage({super.key});
+
+  @override
+  ConsumerState<UsersPage> createState() => _UsersPageState();
+}
+
+class _UsersPageState extends ConsumerState<UsersPage> {
+  final _searchController = TextEditingController();
+  int _currentPage = 1;
+  String? _statusFilter;
+  String? _keyword;
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  void _search() {
+    setState(() {
+      _keyword = _searchController.text.trim();
+      _currentPage = 1;
+    });
+  }
+
+  void _clearFilters() {
+    setState(() {
+      _searchController.clear();
+      _keyword = null;
+      _statusFilter = null;
+      _currentPage = 1;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final params = {
+      'page': _currentPage,
+      'pageSize': 20,
+      'keyword': _keyword,
+      'status': _statusFilter,
+    };
+    final usersAsync = ref.watch(usersProvider(params));
+
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(24),
+            child: Row(
+              children: [
+                const Text('用户管理', style: TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold)),
+                const SizedBox(width: 32),
+                Expanded(
+                  child: TextField(
+                    controller: _searchController,
+                    style: const TextStyle(color: Colors.white),
+                    decoration: InputDecoration(
+                      hintText: '搜索用户...',
+                      hintStyle: TextStyle(color: Colors.white.withOpacity(0.5)),
+                      prefixIcon: const Icon(Icons.search, color: Colors.white54),
+                      filled: true,
+                      fillColor: Colors.white.withOpacity(0.05),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide.none,
+                      ),
+                      suffixIcon: IconButton(
+                        icon: const Icon(Icons.send, color: Colors.white54),
+                        onPressed: _search,
+                      ),
+                    ),
+                    onSubmitted: (_) => _search(),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                DropdownButton<String>(
+                  value: _statusFilter,
+                  hint: const Text('状态', style: TextStyle(color: Colors.white54)),
+                  dropdownColor: AdminTheme.surfaceColor,
+                  items: const [
+                    DropdownMenuItem(value: null, child: Text('全部')),
+                    DropdownMenuItem(value: 'active', child: Text('正常')),
+                    DropdownMenuItem(value: 'banned', child: Text('禁用')),
+                  ],
+                  onChanged: (value) {
+                    setState(() {
+                      _statusFilter = value;
+                      _currentPage = 1;
+                    });
+                  },
+                ),
+                const SizedBox(width: 8),
+                TextButton(
+                  onPressed: _clearFilters,
+                  child: const Text('清除', style: TextStyle(color: Colors.white54)),
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: usersAsync.when(
+              data: (data) {
+                final users = data['users'] as List;
+                final total = data['total'] as int;
+                final totalPages = (total / 20).ceil();
+
+                return Column(
+                  children: [
+                    Expanded(
+                      child: users.isEmpty
+                          ? Center(
+                              child: GlassContainer(
+                                padding: const EdgeInsets.all(32),
+                                child: const Text('暂无用户数据', style: TextStyle(color: Colors.white54)),
+                              ),
+                            )
+                          : ListView.builder(
+                              padding: const EdgeInsets.symmetric(horizontal: 24),
+                              itemCount: users.length,
+                              itemBuilder: (context, index) {
+                                final user = users[index];
+                                return _UserTile(
+                                  user: user,
+                                  onTap: () {
+                                    Navigator.of(context).push(
+                                      MaterialPageRoute(
+                                        builder: (context) => UserDetailPage(userId: user['id']),
+                                      ),
+                                    );
+                                  },
+                                  onToggleStatus: () async {
+                                    final newStatus = user['status'] == 'active' ? 'banned' : 'active';
+                                    await ref.read(usersRepositoryProvider).updateUserStatus(user['id'], newStatus);
+                                    ref.invalidate(usersProvider);
+                                  },
+                                );
+                              },
+                            ),
+                    ),
+                    if (totalPages > 1)
+                      Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            IconButton(
+                              icon: const Icon(Icons.chevron_left, color: Colors.white54),
+                              onPressed: _currentPage > 1 ? () => setState(() => _currentPage--) : null,
+                            ),
+                            Text('$_currentPage / $totalPages', style: const TextStyle(color: Colors.white)),
+                            IconButton(
+                              icon: const Icon(Icons.chevron_right, color: Colors.white54),
+                              onPressed: _currentPage < totalPages ? () => setState(() => _currentPage++) : null,
+                            ),
+                          ],
+                        ),
+                      ),
+                  ],
+                );
+              },
+              loading: () => const Center(child: CircularProgressIndicator(color: Colors.white)),
+              error: (error, _) => Center(
+                child: GlassContainer(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.error_outline, color: AdminTheme.errorColor, size: 48),
+                      const SizedBox(height: 16),
+                      Text('加载失败: $error', style: const TextStyle(color: Colors.white70)),
+                      const SizedBox(height: 16),
+                      ElevatedButton(
+                        onPressed: () => ref.invalidate(usersProvider),
+                        child: const Text('重试'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _UserTile extends StatelessWidget {
+  final Map<String, dynamic> user;
+  final VoidCallback onTap;
+  final VoidCallback onToggleStatus;
+
+  const _UserTile({
+    required this.user,
+    required this.onTap,
+    required this.onToggleStatus,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final status = user['status'] as String? ?? 'active';
+    final isActive = status == 'active';
+    final createdAt = DateTime.tryParse(user['created_at'] ?? '') ?? DateTime.now();
+
+    return GlassContainer(
+      margin: const EdgeInsets.symmetric(vertical: 4),
+      child: ListTile(
+        leading: CircleAvatar(
+          backgroundColor: isActive ? AdminTheme.primaryColor : Colors.grey,
+          child: Text(
+            (user['nickname'] ?? '?')[0].toUpperCase(),
+            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+          ),
+        ),
+        title: Text(
+          user['nickname'] ?? '未知',
+          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+        ),
+        subtitle: Text(
+          '${user['phone'] ?? ''} · ${DateFormat('yyyy-MM-dd').format(createdAt)}',
+          style: TextStyle(color: Colors.white.withOpacity(0.7)),
+        ),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+              decoration: BoxDecoration(
+                color: isActive ? AdminTheme.successColor.withOpacity(0.2) : AdminTheme.errorColor.withOpacity(0.2),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                isActive ? '正常' : '禁用',
+                style: TextStyle(color: isActive ? AdminTheme.successColor : AdminTheme.errorColor, fontSize: 12),
+              ),
+            ),
+            const SizedBox(width: 8),
+            TextButton(
+              onPressed: onToggleStatus,
+              style: TextButton.styleFrom(
+                foregroundColor: isActive ? AdminTheme.errorColor : AdminTheme.successColor,
+              ),
+              child: Text(isActive ? '禁用' : '启用'),
+            ),
+            IconButton(
+              icon: const Icon(Icons.chevron_right, color: Colors.white54),
+              onPressed: onTap,
+            ),
+          ],
+        ),
+        onTap: onTap,
+      ),
+    );
+  }
+}
+```
+
+- [ ] **Step 3: 创建用户详情页面**
+
+```dart
+// lib/features/users/presentation/user_detail_page.dart
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
+import '../../../core/theme/admin_theme.dart';
+import '../../../shared/widgets/glass_container.dart';
+import '../../../shared/widgets/stat_card.dart';
+import '../data/users_repository.dart';
+
+final userDetailProvider = FutureProvider.family<Map<String, dynamic>, String>((ref, userId) async {
+  final repo = ref.read(usersRepositoryProvider);
+  final user = await repo.getUser(userId);
+  final chats = await repo.getUserChats(userId);
+  return {'user': user, 'chats': chats};
+});
+
+class UserDetailPage extends ConsumerStatefulWidget {
+  final String userId;
+
+  const UserDetailPage({super.key, required this.userId});
+
+  @override
+  ConsumerState<UserDetailPage> createState() => _UserDetailPageState();
+}
+
+class _UserDetailPageState extends ConsumerState<UserDetailPage> {
+  String? _expandedConversationId;
+
+  @override
+  Widget build(BuildContext context) {
+    final dataAsync = ref.watch(userDetailProvider(widget.userId));
+
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Colors.white),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: const Text('用户详情', style: TextStyle(color: Colors.white)),
+      ),
+      body: dataAsync.when(
+        data: (data) {
+          final user = data['user'] as Map<String, dynamic>;
+          final chats = data['chats'] as Map<String, dynamic>;
+          final stats = chats['stats'] as Map<String, dynamic>? ?? {};
+          final conversations = chats['conversations'] as List? ?? [];
+          final isActive = (user['status'] as String? ?? 'active') == 'active';
+
+          return SingleChildScrollView(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                GlassContainer(
+                  padding: const EdgeInsets.all(24),
+                  child: Row(
+                    children: [
+                      CircleAvatar(
+                        radius: 32,
+                        backgroundColor: AdminTheme.primaryColor,
+                        child: Text(
+                          (user['nickname'] ?? '?')[0].toUpperCase(),
+                          style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                      const SizedBox(width: 24),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              user['nickname'] ?? '未知',
+                              style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold),
+                            ),
+                            const SizedBox(height: 8),
+                            Text('手机: ${user['phone'] ?? '未设置'}', style: TextStyle(color: Colors.white.withOpacity(0.7))),
+                            const SizedBox(height: 4),
+                            Row(
+                              children: [
+                                Text('状态: ', style: TextStyle(color: Colors.white.withOpacity(0.7))),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: isActive ? AdminTheme.successColor.withOpacity(0.2) : AdminTheme.errorColor.withOpacity(0.2),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Text(
+                                    isActive ? '正常' : '禁用',
+                                    style: TextStyle(color: isActive ? AdminTheme.successColor : AdminTheme.errorColor, fontSize: 12),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                      ElevatedButton(
+                        onPressed: () async {
+                          final newStatus = isActive ? 'banned' : 'active';
+                          await ref.read(usersRepositoryProvider).updateUserStatus(widget.userId, newStatus);
+                          ref.invalidate(userDetailProvider);
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: isActive ? AdminTheme.errorColor : AdminTheme.successColor,
+                        ),
+                        child: Text(isActive ? '禁用用户' : '启用用户'),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 24),
+                Wrap(
+                  spacing: 16,
+                  runSpacing: 16,
+                  children: [
+                    StatCard(
+                      title: '发送消息',
+                      value: '${stats['sent_messages'] ?? 0}',
+                      icon: Icons.send,
+                      color: AdminTheme.primaryColor,
+                    ),
+                    StatCard(
+                      title: '接收消息',
+                      value: '${stats['received_messages'] ?? 0}',
+                      icon: Icons.inbox,
+                      color: AdminTheme.secondaryColor,
+                    ),
+                    StatCard(
+                      title: '会话数',
+                      value: '${stats['conversations'] ?? 0}',
+                      icon: Icons.chat,
+                      color: AdminTheme.successColor,
+                    ),
+                    StatCard(
+                      title: '好友数',
+                      value: '${stats['friends'] ?? 0}',
+                      icon: Icons.people,
+                      color: AdminTheme.warningColor,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 24),
+                const Text('会话列表', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 16),
+                if (conversations.isEmpty)
+                  GlassContainer(
+                    padding: const EdgeInsets.all(24),
+                    child: const Center(child: Text('该用户暂无会话', style: TextStyle(color: Colors.white54))),
+                  )
+                else
+                  ...conversations.map((conv) {
+                    final convMap = conv as Map<String, dynamic>;
+                    final convId = convMap['id'] as String;
+                    final isExpanded = _expandedConversationId == convId;
+
+                    return Column(
+                      children: [
+                        GlassContainer(
+                          child: ListTile(
+                            leading: CircleAvatar(
+                              backgroundColor: AdminTheme.secondaryColor,
+                              child: const Icon(Icons.chat, color: Colors.white),
+                            ),
+                            title: Text(
+                              convMap['other_user_nickname'] ?? '未知会话',
+                              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+                            ),
+                            subtitle: Text(
+                              '${convMap['message_count'] ?? 0} 条消息',
+                              style: TextStyle(color: Colors.white.withOpacity(0.7)),
+                            ),
+                            trailing: TextButton(
+                              onPressed: () {
+                                setState(() {
+                                  _expandedConversationId = isExpanded ? null : convId;
+                                });
+                              },
+                              child: Text(isExpanded ? '收起' : '查看消息'),
+                            ),
+                          ),
+                        ),
+                        if (isExpanded)
+                          _MessageList(conversationId: convId),
+                      ],
+                    );
+                  }),
+              ],
+            ),
+          );
+        },
+        loading: () => const Center(child: CircularProgressIndicator(color: Colors.white)),
+        error: (error, _) => Center(
+          child: GlassContainer(
+            padding: const EdgeInsets.all(24),
+            child: Text('加载失败: $error', style: const TextStyle(color: Colors.white70)),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _MessageList extends ConsumerStatefulWidget {
+  final String conversationId;
+
+  const _MessageList({required this.conversationId});
+
+  @override
+  ConsumerState<_MessageList> createState() => _MessageListState();
+}
+
+class _MessageListState extends ConsumerState<_MessageList> {
+  late Future<Map<String, dynamic>> _messagesFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _messagesFuture = ref.read(usersRepositoryProvider).getConversationMessages(widget.conversationId);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<Map<String, dynamic>>(
+      future: _messagesFuture,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Padding(
+            padding: EdgeInsets.all(16),
+            child: Center(child: CircularProgressIndicator(color: Colors.white)),
+          );
+        }
+        if (snapshot.hasError) {
+          return Padding(
+            padding: const EdgeInsets.all(16),
+            child: Text('加载失败: ${snapshot.error}', style: const TextStyle(color: Colors.white54)),
+          );
+        }
+
+        final messages = snapshot.data?['messages'] as List? ?? [];
+        if (messages.isEmpty) {
+          return const Padding(
+            padding: EdgeInsets.all(16),
+            child: Text('暂无消息记录', style: TextStyle(color: Colors.white54)),
+          );
+        }
+
+        return GlassContainer(
+          margin: const EdgeInsets.only(top: 8),
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('消息记录', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+              const SizedBox(height: 12),
+              ...messages.take(20).map((msg) {
+                final msgMap = msg as Map<String, dynamic>;
+                final createdAt = DateTime.tryParse(msgMap['created_at'] ?? '') ?? DateTime.now();
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        DateFormat('HH:mm').format(createdAt),
+                        style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 12),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.05),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            msgMap['content'] ?? '[${msgMap['type'] ?? 'media'}]',
+                            style: const TextStyle(color: Colors.white),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }),
+              if (messages.length > 20)
+                Text('... 还有 ${messages.length - 20} 条消息', style: TextStyle(color: Colors.white.withOpacity(0.5))),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+```
+
+- [ ] **Step 4: 提交**
 
 ```bash
 git add admin-app/lib/features/users/
@@ -2338,7 +2937,298 @@ class MonitorRepository {
 
 - [ ] **Step 2: 创建监控页面**
 
-实现CPU/内存/磁盘仪表盘，API性能指标，实时连接状态。
+```dart
+// lib/features/monitor/presentation/monitor_page.dart
+import 'dart:async';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../core/theme/admin_theme.dart';
+import '../../../shared/widgets/glass_container.dart';
+import '../data/monitor_repository.dart';
+
+final monitorRepositoryProvider = Provider((ref) => MonitorRepository());
+
+final monitorProvider = FutureProvider<Map<String, dynamic>>((ref) async {
+  return ref.read(monitorRepositoryProvider).getMonitorData();
+});
+
+class MonitorPage extends ConsumerStatefulWidget {
+  const MonitorPage({super.key});
+
+  @override
+  ConsumerState<MonitorPage> createState() => _MonitorPageState();
+}
+
+class _MonitorPageState extends ConsumerState<MonitorPage> {
+  Timer? _refreshTimer;
+  Map<String, dynamic>? _lastData;
+  DateTime? _lastUpdate;
+
+  @override
+  void initState() {
+    super.initState();
+    _startAutoRefresh();
+  }
+
+  @override
+  void dispose() {
+    _refreshTimer?.cancel();
+    super.dispose();
+  }
+
+  void _startAutoRefresh() {
+    _refreshTimer = Timer.periodic(const Duration(seconds: 3), (_) {
+      ref.invalidate(monitorProvider);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final dataAsync = ref.watch(monitorProvider);
+
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      body: dataAsync.when(
+        data: (data) {
+          _lastData = data;
+          _lastUpdate = DateTime.now();
+          return _buildContent(data);
+        },
+        loading: () {
+          if (_lastData != null) {
+            return _buildContent(_lastData!);
+          }
+          return const Center(child: CircularProgressIndicator(color: Colors.white));
+        },
+        error: (error, _) => Center(
+          child: GlassContainer(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.error_outline, color: AdminTheme.errorColor, size: 48),
+                const SizedBox(height: 16),
+                Text('连接失败: $error', style: const TextStyle(color: Colors.white70)),
+                const SizedBox(height: 16),
+                ElevatedButton(
+                  onPressed: () => ref.invalidate(monitorProvider),
+                  child: const Text('重新连接'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildContent(Map<String, dynamic> data) {
+    final server = data['server'] as Map<String, dynamic>? ?? {};
+    final api = data['api'] as Map<String, dynamic>? ?? {};
+    final realtime = data['realtime'] as Map<String, dynamic>? ?? {};
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Text('系统监控', style: TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold)),
+              const Spacer(),
+              if (_lastUpdate != null)
+                Text(
+                  '上次更新: ${TimeOfDay.fromDateTime(_lastUpdate!).format(context)}',
+                  style: TextStyle(color: Colors.white.withOpacity(0.5)),
+                ),
+            ],
+          ),
+          const SizedBox(height: 24),
+          const Text('服务器资源', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w600)),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(child: _GaugeCard(title: 'CPU', value: (server['cpu_percent'] ?? 0).toDouble(), color: AdminTheme.primaryColor)),
+              const SizedBox(width: 16),
+              Expanded(child: _GaugeCard(title: '内存', value: (server['memory_percent'] ?? 0).toDouble(), color: AdminTheme.secondaryColor)),
+              const SizedBox(width: 16),
+              Expanded(child: _GaugeCard(title: '磁盘', value: (server['disk_percent'] ?? 0).toDouble(), color: AdminTheme.warningColor)),
+            ],
+          ),
+          const SizedBox(height: 24),
+          const Text('API 性能', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w600)),
+          const SizedBox(height: 16),
+          GlassContainer(
+            padding: const EdgeInsets.all(24),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: [
+                _ApiStat(title: '请求/秒', value: '${(api['requests_per_second'] ?? 0).toStringAsFixed(1)}'),
+                _ApiStat(title: '平均响应', value: '${(api['avg_response_time_ms'] ?? 0).toStringAsFixed(0)} ms'),
+                _ApiStat(title: '错误率', value: '${((api['error_rate'] ?? 0) * 100).toStringAsFixed(2)}%'),
+              ],
+            ),
+          ),
+          const SizedBox(height: 24),
+          const Text('实时连接', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w600)),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: GlassContainer(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    children: [
+                      const Icon(Icons.cable, color: AdminTheme.primaryColor, size: 32),
+                      const SizedBox(height: 8),
+                      Text(
+                        '${realtime['websocket_connections'] ?? 0}',
+                        style: const TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.bold),
+                      ),
+                      Text('WebSocket 连接', style: TextStyle(color: Colors.white.withOpacity(0.7))),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: GlassContainer(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    children: [
+                      const Icon(Icons.people, color: AdminTheme.successColor, size: 32),
+                      const SizedBox(height: 8),
+                      Text(
+                        '${realtime['online_users'] ?? 0}',
+                        style: const TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.bold),
+                      ),
+                      Text('在线用户', style: TextStyle(color: Colors.white.withOpacity(0.7))),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: GlassContainer(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    children: [
+                      const Icon(Icons.video_call, color: AdminTheme.secondaryColor, size: 32),
+                      const SizedBox(height: 8),
+                      Text(
+                        '${realtime['active_call_rooms'] ?? 0}',
+                        style: const TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.bold),
+                      ),
+                      Text('通话房间', style: TextStyle(color: Colors.white.withOpacity(0.7))),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _GaugeCard extends StatelessWidget {
+  final String title;
+  final double value;
+  final Color color;
+
+  const _GaugeCard({required this.title, required this.value, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return GlassContainer(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        children: [
+          SizedBox(
+            width: 120,
+            height: 120,
+            child: CustomPaint(
+              painter: _GaugePainter(value: value, color: color),
+              child: Center(
+                child: Text(
+                  '${value.toStringAsFixed(1)}%',
+                  style: TextStyle(color: color, fontSize: 24, fontWeight: FontWeight.bold),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Text(title, style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 14)),
+        ],
+      ),
+    );
+  }
+}
+
+class _GaugePainter extends CustomPainter {
+  final double value;
+  final Color color;
+
+  _GaugePainter({required this.value, required this.color});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    final radius = size.width / 2 - 10;
+
+    final bgPaint = Paint()
+      ..color = Colors.white.withOpacity(0.1)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 12
+      ..strokeCap = StrokeCap.round;
+
+    canvas.drawArc(
+      Rect.fromCircle(center: center, radius: radius),
+      -0.5 * 3.14159,
+      3.14159,
+      false,
+      bgPaint,
+    );
+
+    final fgPaint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 12
+      ..strokeCap = StrokeCap.round;
+
+    final sweepAngle = (value / 100) * 3.14159;
+    canvas.drawArc(
+      Rect.fromCircle(center: center, radius: radius),
+      3.14159,
+      -sweepAngle,
+      false,
+      fgPaint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _GaugePainter oldDelegate) => oldDelegate.value != value;
+}
+
+class _ApiStat extends StatelessWidget {
+  final String title;
+  final String value;
+
+  const _ApiStat({required this.title, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Text(value, style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 4),
+        Text(title, style: TextStyle(color: Colors.white.withOpacity(0.7))),
+      ],
+    );
+  }
+}
+```
 
 - [ ] **Step 3: 提交**
 
@@ -2357,9 +3247,141 @@ git commit -m "feat(client): add system monitor page"
 
 - [ ] **Step 1: 创建SettingsRepository**
 
+```dart
+// lib/features/settings/data/settings_repository.dart
+import '../../../core/network/admin_api_client.dart';
+
+class SettingsRepository {
+  final _apiClient = AdminApiClient();
+
+  Future<List<dynamic>> getConfigs() async {
+    final response = await _apiClient.dio.get('/admin/configs');
+    return response.data['data'];
+  }
+
+  Future<void> updateConfig(String key, String value) async {
+    await _apiClient.dio.put('/admin/configs/$key', data: {'value': value});
+  }
+}
+
+final settingsRepositoryProvider = Provider((ref) => SettingsRepository());
+
+final configsProvider = FutureProvider<List<dynamic>>((ref) async {
+  return ref.read(settingsRepositoryProvider).getConfigs();
+});
+```
+
 - [ ] **Step 2: 创建设置页面**
 
-实现注册开关等系统配置。
+```dart
+// lib/features/settings/presentation/settings_page.dart
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../core/theme/admin_theme.dart';
+import '../../../shared/widgets/glass_container.dart';
+import '../data/settings_repository.dart';
+
+class SettingsPage extends ConsumerWidget {
+  const SettingsPage({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final configsAsync = ref.watch(configsProvider);
+
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('系统设置', style: TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 24),
+            configsAsync.when(
+              data: (configs) {
+                return Column(
+                  children: configs.map((config) {
+                    final key = config['key'] as String;
+                    final value = config['value'] as String;
+                    final description = config['description'] as String? ?? '';
+
+                    if (key == 'allow_registration') {
+                      return _RegistrationToggle(
+                        value: value == 'true',
+                        description: description,
+                        onChanged: (newValue) async {
+                          await ref.read(settingsRepositoryProvider).updateConfig(key, newValue ? 'true' : 'false');
+                          ref.invalidate(configsProvider);
+                        },
+                      );
+                    }
+
+                    return GlassContainer(
+                      margin: const EdgeInsets.only(bottom: 16),
+                      child: ListTile(
+                        title: Text(key, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+                        subtitle: Text(description, style: TextStyle(color: Colors.white.withOpacity(0.7))),
+                        trailing: Text(value, style: const TextStyle(color: AdminTheme.primaryColor)),
+                      ),
+                    );
+                  }).toList(),
+                );
+              },
+              loading: () => const Center(child: CircularProgressIndicator(color: Colors.white)),
+              error: (error, _) => GlassContainer(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.error_outline, color: AdminTheme.errorColor, size: 48),
+                    const SizedBox(height: 16),
+                    Text('加载失败: $error', style: const TextStyle(color: Colors.white70)),
+                    const SizedBox(height: 16),
+                    ElevatedButton(
+                      onPressed: () => ref.invalidate(configsProvider),
+                      child: const Text('重试'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _RegistrationToggle extends StatelessWidget {
+  final bool value;
+  final String description;
+  final ValueChanged<bool> onChanged;
+
+  const _RegistrationToggle({
+    required this.value,
+    required this.description,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GlassContainer(
+      margin: const EdgeInsets.only(bottom: 16),
+      child: SwitchListTile(
+        title: const Text('允许新用户注册', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+        subtitle: Text(
+          value ? '新用户可以注册账号' : '新用户无法注册账号',
+          style: TextStyle(color: Colors.white.withOpacity(0.7)),
+        ),
+        value: value,
+        onChanged: onChanged,
+        activeColor: AdminTheme.successColor,
+        inactiveThumbColor: Colors.grey,
+      ),
+    );
+  }
+}
+```
 
 - [ ] **Step 3: 提交**
 
