@@ -76,6 +76,7 @@ func (h *MessageHandler) Send(c *gin.Context) {
 					"type":            message.Type,
 					"content":         message.Content,
 					"media_url":       message.MediaURL,
+					"duration":        message.Duration,
 					"created_at":      message.CreatedAt,
 				},
 			}

@@ -32,6 +32,7 @@ type SendMessageInput struct {
 	Type           model.MessageType `json:"type" binding:"required"`
 	Content        string            `json:"content"`
 	MediaURL       string            `json:"media_url"`
+	Duration       int               `json:"duration"`
 }
 
 type MessageListResponse struct {
@@ -55,6 +56,7 @@ func (s *MessageService) Send(senderID uuid.UUID, input *SendMessageInput) (*mod
 		Type:           input.Type,
 		Content:        input.Content,
 		MediaURL:       input.MediaURL,
+		Duration:       input.Duration,
 		Status:         model.MessageStatusSent,
 	}
 
