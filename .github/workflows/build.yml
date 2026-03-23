@@ -111,6 +111,12 @@ jobs:
             flutter create . --platforms ios
           fi
 
+      - name: Update iOS deployment target
+        working-directory: client/ios
+        run: |
+          sed -i '' 's/IPHONEOS_DEPLOYMENT_TARGET = 11.0/IPHONEOS_DEPLOYMENT_TARGET = 12.0/g' Runner.xcodeproj/project.pbxproj || true
+          sed -i '' 's/IPHONEOS_DEPLOYMENT_TARGET = 10.0/IPHONEOS_DEPLOYMENT_TARGET = 12.0/g' Runner.xcodeproj/project.pbxproj || true
+
       - name: Get dependencies
         working-directory: client
         run: flutter pub get
@@ -157,9 +163,23 @@ jobs:
             flutter create . --platforms macos
           fi
 
+      - name: Set macOS deployment target
+        working-directory: client/macos
+        run: |
+          sed -i '' 's/MACOSX_DEPLOYMENT_TARGET = 10.14/MACOSX_DEPLOYMENT_TARGET = 10.15/g' Runner.xcodeproj/project.pbxproj || true
+          sed -i '' 's/MACOSX_DEPLOYMENT_TARGET = 10.13/MACOSX_DEPLOYMENT_TARGET = 10.15/g' Runner.xcodeproj/project.pbxproj || true
+          if [ -f "Podfile" ]; then
+            sed -i '' "s/platform :osx, '10.14'/platform :osx, '10.15'/g" Podfile || true
+            sed -i '' "s/platform :osx, '10.13'/platform :osx, '10.15'/g" Podfile || true
+          fi
+
       - name: Get dependencies
         working-directory: client
         run: flutter pub get
+
+      - name: Update pods
+        working-directory: client/macos
+        run: pod install --repo-update || true
 
       - name: Build macOS
         working-directory: client
