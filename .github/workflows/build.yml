@@ -111,15 +111,22 @@ jobs:
             flutter create . --platforms ios
           fi
 
+      - name: Get dependencies
+        working-directory: client
+        run: flutter pub get
+
       - name: Update iOS deployment target
         working-directory: client/ios
         run: |
           sed -i '' 's/IPHONEOS_DEPLOYMENT_TARGET = 11.0/IPHONEOS_DEPLOYMENT_TARGET = 12.0/g' Runner.xcodeproj/project.pbxproj || true
           sed -i '' 's/IPHONEOS_DEPLOYMENT_TARGET = 10.0/IPHONEOS_DEPLOYMENT_TARGET = 12.0/g' Runner.xcodeproj/project.pbxproj || true
-
-      - name: Get dependencies
-        working-directory: client
-        run: flutter pub get
+          if [ -f "Podfile" ]; then
+            sed -i '' "s/platform :ios, '11.0'/platform :ios, '12.0'/g" Podfile || true
+            sed -i '' "s/platform :ios, '10.0'/platform :ios, '12.0'/g" Podfile || true
+            echo "platform :ios, '12.0'" > Podfile.new
+            tail -n +2 Podfile >> Podfile.new
+            mv Podfile.new Podfile
+          fi
 
       - name: Build iOS (no codesign)
         working-directory: client
@@ -163,6 +170,10 @@ jobs:
             flutter create . --platforms macos
           fi
 
+      - name: Get dependencies
+        working-directory: client
+        run: flutter pub get
+
       - name: Set macOS deployment target
         working-directory: client/macos
         run: |
@@ -171,11 +182,10 @@ jobs:
           if [ -f "Podfile" ]; then
             sed -i '' "s/platform :osx, '10.14'/platform :osx, '10.15'/g" Podfile || true
             sed -i '' "s/platform :osx, '10.13'/platform :osx, '10.15'/g" Podfile || true
+            echo "platform :osx, '10.15'" > Podfile.new
+            tail -n +2 Podfile >> Podfile.new
+            mv Podfile.new Podfile
           fi
-
-      - name: Get dependencies
-        working-directory: client
-        run: flutter pub get
 
       - name: Update pods
         working-directory: client/macos
