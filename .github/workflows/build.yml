@@ -39,6 +39,11 @@ on:
         required: false
         default: true
         type: boolean
+      build_harmonyos:
+        description: 'Build HarmonyOS'
+        required: false
+        default: true
+        type: boolean
 
 env:
   FLUTTER_VERSION: '3.27.0'
@@ -318,6 +323,76 @@ jobs:
           name: web-build
           path: client/build/web-build.zip
 
+  build-harmonyos:
+    name: Build HarmonyOS
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.build_harmonyos }}
+    continue-on-error: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Install HarmonyOS build tools
+        run: |
+          npm install -g @ohos/hvigor @ohos/hvigor-ohos-plugin 2>/dev/null || true
+          echo "HarmonyOS tools installation attempted"
+
+      - name: Create HarmonyOS project archive
+        working-directory: harmonyos
+        run: |
+          mkdir -p build
+          zip -r build/harmonyos-source.zip . -x "build/*"
+          echo "HarmonyOS source code packaged"
+
+          cat > build/README.md << 'EOF'
+          # HarmonyOS 客户端
+
+          ## 构建说明
+
+          由于GitHub Actions暂时不支持HarmonyOS官方SDK，请使用以下方式构建：
+
+          ### 方法一：使用 DevEco Studio
+          1. 下载并安装 [DevEco Studio](https://developer.huawei.com/consumer/cn/deveco-studio/)
+          2. 打开 DevEco Studio，选择 "Open Project"
+          3. 选择 `harmonyos` 目录
+          4. 等待项目同步完成
+          5. 点击 Build > Build Hap(s)/APP(s) > Build Hap(s)
+
+          ### 方法二：命令行构建
+          ```bash
+          cd harmonyos
+          ohpm install
+          hvigor build --mode module -p module=default@default
+          ```
+
+          ## 项目结构
+          - `entry/` - 主入口模块
+          - `entry/src/main/ets/` - ArkTS源代码
+          - `entry/src/main/resources/` - 资源文件
+
+          ## API配置
+          默认API地址: `http://23.95.170.176:8080/api/v1`
+          可在 `entry/src/main/ets/entryability/EntryAbility.ets` 中修改
+          EOF
+
+      - name: Upload HarmonyOS artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: harmonyos-build
+          path: |
+            harmonyos/build/**/*
+
   build-server:
     name: Build Server
     runs-on: ubuntu-latest
@@ -349,7 +424,7 @@ jobs:
 
   release:
     name: Create Release
-    needs: [build-android, build-macos, build-linux, build-windows, build-web, build-server]
+    needs: [build-android, build-macos, build-linux, build-windows, build-web, build-harmonyos, build-server]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
     permissions:

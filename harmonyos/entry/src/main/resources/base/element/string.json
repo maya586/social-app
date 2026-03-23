@@ -1,0 +1,20 @@
+{
+  "string": [
+    {
+      "name": "module_desc",
+      "value": "Social App Entry Module"
+    },
+    {
+      "name": "EntryAbility_desc",
+      "value": "Social App Entry Ability"
+    },
+    {
+      "name": "EntryAbility_label",
+      "value": "社交应用"
+    },
+    {
+      "name": "app_name",
+      "value": "社交应用"
+    }
+  ]
+}

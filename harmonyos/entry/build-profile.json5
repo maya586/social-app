@@ -1,0 +1,15 @@
+{
+  "apiType": "stageMode",
+  "buildOption": {},
+  "buildOptionSet": [
+    {
+      "name": "sourceMap",
+      "value": true
+    }
+  ],
+  "targets": [
+    {
+      "name": "default"
+    }
+  ]
+}
