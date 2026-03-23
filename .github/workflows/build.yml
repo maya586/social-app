@@ -118,12 +118,14 @@ jobs:
       - name: Update iOS deployment target
         working-directory: client/ios
         run: |
-          sed -i '' 's/IPHONEOS_DEPLOYMENT_TARGET = 11.0/IPHONEOS_DEPLOYMENT_TARGET = 12.0/g' Runner.xcodeproj/project.pbxproj || true
-          sed -i '' 's/IPHONEOS_DEPLOYMENT_TARGET = 10.0/IPHONEOS_DEPLOYMENT_TARGET = 12.0/g' Runner.xcodeproj/project.pbxproj || true
+          sed -i '' 's/IPHONEOS_DEPLOYMENT_TARGET = 12.0/IPHONEOS_DEPLOYMENT_TARGET = 13.0/g' Runner.xcodeproj/project.pbxproj || true
+          sed -i '' 's/IPHONEOS_DEPLOYMENT_TARGET = 11.0/IPHONEOS_DEPLOYMENT_TARGET = 13.0/g' Runner.xcodeproj/project.pbxproj || true
+          sed -i '' 's/IPHONEOS_DEPLOYMENT_TARGET = 10.0/IPHONEOS_DEPLOYMENT_TARGET = 13.0/g' Runner.xcodeproj/project.pbxproj || true
           if [ -f "Podfile" ]; then
-            sed -i '' "s/platform :ios, '11.0'/platform :ios, '12.0'/g" Podfile || true
-            sed -i '' "s/platform :ios, '10.0'/platform :ios, '12.0'/g" Podfile || true
-            echo "platform :ios, '12.0'" > Podfile.new
+            sed -i '' "s/platform :ios, '12.0'/platform :ios, '13.0'/g" Podfile || true
+            sed -i '' "s/platform :ios, '11.0'/platform :ios, '13.0'/g" Podfile || true
+            sed -i '' "s/platform :ios, '10.0'/platform :ios, '13.0'/g" Podfile || true
+            echo "platform :ios, '13.0'" > Podfile.new
             tail -n +2 Podfile >> Podfile.new
             mv Podfile.new Podfile
           fi
